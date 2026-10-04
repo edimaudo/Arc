@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Arc{% endblock %}
+{% block content %}
+<section class="wrap page-head"><div><p class="eyebrow">Workspace</p><h1>Acquisition intelligence</h1></div><a class="button primary" href="/analysis/new">New analysis</a></section>
+<section class="wrap content-grid">
+  <div class="panel span-2"><div class="panel-head"><h2>Recent investigations</h2><a href="/analyst">Open analyst workspace</a></div>
+    <div class="table">
+      {% for item in investigations %}<div class="table-row"><div><strong>{{ item.acquirer }}</strong><span>→ {{ item.target }}</span></div><div><span class="status">{{ item.status }}</span></div><div><strong>{{ item.fit }}</strong><span>fit</span></div></div>{% endfor %}
+    </div>
+  </div>
+  <div class="panel"><div class="panel-head"><h2>Business owner view</h2></div><p class="muted">Executive view focuses on deal fit, risk and growth opportunities.</p><a class="button secondary full" href="/owner">Open owner workspace</a></div>
+  <div class="panel"><div class="panel-head"><h2>Company discovery</h2></div><p class="muted">Screen potential companies using strategic, cultural, financial and audience-fit signals.</p><a class="button secondary full" href="/discovery">Find companies</a></div>
+</section>
+{% endblock %}

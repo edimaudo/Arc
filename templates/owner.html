@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Business Owner — Arc{% endblock %}
+{% block content %}
+<section class="wrap page-head"><div><p class="eyebrow">Business owner</p><h1>Executive acquisition view</h1><p class="muted">{{ owner_snapshot.company }}</p></div><a class="button secondary" href="/discovery">Find potential companies</a></section>
+<section class="wrap metric-grid">
+{% for label, value in [("Strategic fit", owner_snapshot.strategic_fit),("Cultural alignment", owner_snapshot.cultural_alignment),("Audience expansion", owner_snapshot.audience_expansion),("Financial fit", owner_snapshot.financial_fit)] %}
+  <div class="metric-card"><span>{{ label }}</span><strong>{{ value }}</strong><div class="bar"><i style="width:{{ value }}%"></i></div></div>
+{% endfor %}
+</section>
+<section class="wrap content-grid">
+  <div class="panel span-2"><div class="panel-head"><h2>What matters</h2><span class="status warning">Moderate integration risk</span></div><div class="finding-list"><div><span>01</span><h3>Audience expansion</h3><p>Target opens access to cultural affinities not currently prominent in the portfolio.</p></div><div><span>02</span><h3>Positioning</h3><p>Brand territories are adjacent but not identical; integration should protect the target's identity.</p></div><div><span>03</span><h3>Decision support</h3><p>Use Arc's evidence to identify where management needs conventional diligence before proceeding.</p></div></div></div>
+  <div class="panel"><div class="panel-head"><h2>Potential matches</h2></div><p class="muted">See scored acquisition candidates.</p><a class="button primary full" href="/discovery">Open shortlist</a></div>
+</section>
+{% endblock %}

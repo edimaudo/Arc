@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Analyst Workspace — Arc{% endblock %}
+{% block content %}
+<section class="wrap page-head"><div><p class="eyebrow">Analyst workspace</p><h1>{{ acquirer }} <span class="muted">×</span> {{ target }}</h1><p class="muted">{{ status }}</p></div><div class="hero-actions"><a class="button secondary" href="/discovery">Find companies</a><a class="button primary" href="/analysis/demo-001">Open full analysis</a></div></section>
+<section class="wrap metric-grid">
+{% for label, value in [("Strategic fit", overview.strategic_fit),("Cultural alignment", overview.cultural_alignment),("Audience expansion", overview.audience_expansion),("Financial fit", overview.financial_fit)] %}<div class="metric-card"><span>{{ label }}</span><strong>{{ value }}</strong><div class="bar"><i style="width:{{ value }}%"></i></div></div>{% endfor %}
+</section>
+<section class="wrap content-grid">
+  <div class="panel span-2"><div class="panel-head"><h2>Key findings</h2><a href="/analysis/demo-001#report">View report</a></div>{% for f in findings %}<article class="finding"><span class="tag {{ 'risk' if f.type=='Risk' else 'opportunity' }}">{{ f.type }}</span><h3>{{ f.title }}</h3><p>{{ f.body }}</p></article>{% endfor %}</div>
+  <div class="panel"><div class="panel-head"><h2>Agent activity</h2></div><ol class="activity">{% for x in activity %}<li><span class="dot done"></span>{{ x }}</li>{% endfor %}</ol></div>
+</section>
+{% endblock %}

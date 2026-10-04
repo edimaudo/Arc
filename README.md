@@ -4,8 +4,8 @@ Arc is a tool for M&A analysts and business owners. It combines business insight
 It looks at M&A information through these lenses
 
 - Analyst: investigation controls, evidence, findings, source/evidence drill-down, agent activity.
-- Business  workspace: executive overview, risk/synergy summary, potential company targets and fit scores.
-- Company discovery: candidate companies ranked on Strategic Fit, Cultural Fit, Audience Expansion, Financial Fit, Risk, and Overall Fit.
+- Business: executive overview, risk/synergy summary, potential company targets and fit scores.
+- Discovery: candidate companies ranked on Strategic Fit, Cultural Fit, Audience Expansion, Financial Fit, Risk, and Overall Fit.
 
 ## Architecture
 - Backend: FastAPI

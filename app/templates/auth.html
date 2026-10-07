@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ mode }} — Arc{% endblock %}
+{% block content %}
+<section class="auth wrap">
+  <div class="auth-card">
+    <p class="eyebrow">ARC</p><h1>{{ mode }}</h1>
+    <p class="muted">Sign in to access your Arc workspace.</p>
+    <form onsubmit="event.preventDefault(); window.location='/dashboard';">
+      <label>Email<input type="email" required placeholder="you@company.com"></label>
+      <label>Password<input type="password" required placeholder="••••••••"></label>
+      <button class="button primary full" type="submit">{{ mode }}</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

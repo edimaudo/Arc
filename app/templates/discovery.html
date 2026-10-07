@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Find Potential Companies — Arc{% endblock %}
+{% block content %}
+<section class="wrap page-head"><div><p class="eyebrow">Company discovery</p><h1>Find potential acquisition fits.</h1><p class="muted">Search the market using grounded public-company research, then use Qloo to identify cultural and audience adjacency.</p></div><a class="button secondary" href="/analysis/new">Investigate a specific target</a></section>
+<section class="wrap panel discovery-command">
+  <div><h2>Acquisition thesis</h2><p class="muted">Define what a good target looks like. Arc will research candidates and return only evidence-backed results.</p>
+    <div class="two-col"><label>Acquirer<input id="discovery-acquirer" placeholder="Acquiring company" required></label><label>Sector<input id="sector" placeholder="Target sector" value="Consumer"></label></div>
+    <div class="two-col"><label>Geography<input id="geography" value="Canada"></label><label>Thesis<input id="thesis" placeholder="e.g. Adjacent premium brands with audience expansion potential"></label></div>
+    <div class="discovery-actions"><label>Minimum overall fit<input type="range" min="50" max="95" value="70" id="min-fit"><span class="range-value" id="min-fit-value">70</span></label><button class="button primary" id="refresh-shortlist">Find companies</button></div>
+  </div>
+</section>
+<section class="wrap discovery-layout">
+  <aside class="panel filter-panel"><h2>Score dimensions</h2><p class="muted">Scores are only shown where Arc has enough evidence to support the component.</p><div class="check-grid vertical"><label><input type="checkbox" checked disabled> Strategic fit</label><label><input type="checkbox" checked disabled> Cultural fit</label><label><input type="checkbox" checked disabled> Audience expansion</label><label><input type="checkbox" checked disabled> Financial fit</label></div><hr><p class="muted"><strong>Score model</strong><br>30% strategic<br>30% cultural<br>20% audience<br>20% financial</p></aside>
+  <div class="candidate-list" id="candidate-list"><div class="empty-state"><h3>Ready to search</h3><p class="muted">Enter an acquirer and acquisition thesis to generate a live shortlist.</p></div></div>
+</section>
+{% endblock %}
+{% block scripts %}<script>
+const slider=document.getElementById('min-fit');
+const value=document.getElementById('min-fit-value');
+const button=document.getElementById('refresh-shortlist');
+const list=document.getElementById('candidate-list');
+
+function filter(){
+  const n=Number(slider.value); value.textContent=n;
+  document.querySelectorAll('.candidate-card').forEach(c=>c.hidden=c.dataset.score !== '' && Number(c.dataset.score)<n);
+}
+slider?.addEventListener('input',filter);
+
+button?.addEventListener('click', async () => {
+  const acquirer=document.getElementById('discovery-acquirer').value.trim();
+  const sector=document.getElementById('sector').value.trim();
+  const geography=document.getElementById('geography').value.trim();
+  const thesis=document.getElementById('thesis').value.trim();
+  if(!acquirer || !sector){ list.innerHTML='<div class="empty-state"><h3>Acquirer and sector are required</h3><p class="muted">Provide enough context for Arc to search the market.</p></div>'; return; }
+  button.disabled=true; button.textContent='Researching…';
+  list.innerHTML='<div class="empty-state"><h3>Arc is researching the market</h3><p class="muted">Finding companies, validating their public footprint and preparing the screening set.</p></div>';
+  try {
+    const params=new URLSearchParams({acquirer,sector,geography,thesis});
+    const res=await fetch('/discovery/api/candidates?'+params.toString());
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.detail || data.error || 'Discovery failed');
+    const candidates=data.candidates||[];
+    if(!candidates.length){ list.innerHTML='<div class="empty-state"><h3>No supported candidates returned</h3><p class="muted">Broaden the thesis or geography and try again.</p></div>'; return; }
+    list.innerHTML=candidates.map((c,i)=>{
+      const overall=c.overall_fit==null?'—':c.overall_fit;
+      const scores=c.components || c.scores || {};
+      const detail=c.score_detail || {components:scores};
+      const scoreCell=(label,key)=>`<div><span>${label}</span><strong>${scores[key]??'—'}</strong></div>`;
+      const link=`/analysis/new?target=${encodeURIComponent(c.name||'')}&acquirer=${encodeURIComponent(acquirer)}`;
+      return `<article class="candidate-card" data-score="${c.overall_fit??''}">
+        <div class="candidate-top"><div><span class="section-kicker">${String(i+1).padStart(2,'0')}</span><h2>${c.name||'Unknown company'}</h2><p class="muted">${c.sector||''} · ${c.geography||geography}</p></div><div class="overall"><strong>${overall}</strong><span>overall fit</span></div></div>
+        <p>${c.rationale||c.research?.summary||'No rationale returned.'}</p>
+        <div class="score-row">${scoreCell('Strategic','strategic_fit')}${scoreCell('Cultural','cultural_fit')}${scoreCell('Audience','audience_expansion')}${scoreCell('Financial','financial_fit')}</div>
+        <div class="card-footer"><span>${c.score_status==='insufficient_evidence'?'Insufficient evidence for full fit score':(c.public_or_private||'')}${c.website?` · <a class="text-link" href="${c.website}" target="_blank" rel="noreferrer">Website ↗</a>`:''}</span><a href="${link}" class="text-link">Investigate →</a></div>
+      </article>`;
+    }).join('');
+    filter();
+  } catch(err) {
+    list.innerHTML=`<div class="empty-state"><h3>Discovery failed</h3><p class="muted">${err.message}</p></div>`;
+  } finally { button.disabled=false; button.textContent='Find companies'; }
+});
+</script>{% endblock %}

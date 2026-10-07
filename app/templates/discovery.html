@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Find Potential Companies — Arc{% endblock %}
+{% block title %}Discovery — Arc{% endblock %}
 {% block content %}
-<section class="wrap page-head"><div><p class="eyebrow">Company discovery</p><h1>Find potential acquisition fits.</h1><p class="muted">Search the market using grounded public-company research, then use Qloo to identify cultural and audience adjacency.</p></div><a class="button secondary" href="/analysis/new">Investigate a specific target</a></section>
+<section class="wrap page-head"><div><h1>Discovery</h1><p class="muted">Identify and compare potential acquisition targets using business, financial, audience, and cultural signals.</p></div><a class="button secondary" href="/analysis/new">Start M&A analysis</a></section>
 <section class="wrap panel discovery-command">
   <div><h2>Acquisition thesis</h2><p class="muted">Define what a good target looks like. Arc will research candidates and return only evidence-backed results.</p>
     <div class="two-col"><label>Acquirer<input id="discovery-acquirer" placeholder="Acquiring company" required></label><label>Sector<input id="sector" placeholder="Target sector" value="Consumer"></label></div>
@@ -48,7 +48,7 @@ button?.addEventListener('click', async () => {
       const scoreCell=(label,key)=>`<div><span>${label}</span><strong>${scores[key]??'—'}</strong></div>`;
       const link=`/analysis/new?target=${encodeURIComponent(c.name||'')}&acquirer=${encodeURIComponent(acquirer)}`;
       return `<article class="candidate-card" data-score="${c.overall_fit??''}">
-        <div class="candidate-top"><div><span class="section-kicker">${String(i+1).padStart(2,'0')}</span><h2>${c.name||'Unknown company'}</h2><p class="muted">${c.sector||''} · ${c.geography||geography}</p></div><div class="overall"><strong>${overall}</strong><span>overall fit</span></div></div>
+        <div class="candidate-top"><div><h2>${c.name||'Unknown company'}</h2><p class="muted">${c.sector||''} · ${c.geography||geography}</p></div><div class="overall"><strong>${overall}</strong><span>overall fit</span></div></div>
         <p>${c.rationale||c.research?.summary||'No rationale returned.'}</p>
         <div class="score-row">${scoreCell('Strategic','strategic_fit')}${scoreCell('Cultural','cultural_fit')}${scoreCell('Audience','audience_expansion')}${scoreCell('Financial','financial_fit')}</div>
         <div class="card-footer"><span>${c.score_status==='insufficient_evidence'?'Insufficient evidence for full fit score':(c.public_or_private||'')}${c.website?` · <a class="text-link" href="${c.website}" target="_blank" rel="noreferrer">Website ↗</a>`:''}</span><a href="${link}" class="text-link">Investigate →</a></div>

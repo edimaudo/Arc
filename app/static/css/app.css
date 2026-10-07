@@ -43,7 +43,6 @@ button { color: inherit; }
 .text-btn.active, .text-btn:hover, .icon-btn:hover { color: var(--text); }
 .wrap { width: min(1180px, calc(100% - 40px)); margin: 0 auto; }
 .hero { min-height: 70vh; display: grid; grid-template-columns: 1.15fr .85fr; gap: 72px; align-items: center; padding: 72px 0; }
-.eyebrow, .section-kicker { font-size: .75rem; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
 h1 { font-size: clamp(2.6rem, 6vw, 5.4rem); line-height: 1.02; letter-spacing: -.045em; margin: 10px 0 20px; font-weight: 600; }
 h2 { font-size: 1.15rem; margin: 0; letter-spacing: -.02em; }
 h3 { margin: 4px 0 7px; font-size: 1rem; }
@@ -192,3 +191,65 @@ summary { cursor: pointer; color: var(--muted); }
 button, a { min-height: 38px; }
 
 .alert { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); background: var(--soft); color: var(--text); font-size: .84rem; }
+
+.site-header.landing-header { grid-template-columns: auto auto; justify-content: space-between; }
+.hero { min-height: 72vh; gap: 64px; padding: 92px 0 84px; }
+.hero-copy { max-width: 760px; }
+.hero h1 { max-width: 760px; margin: 0 0 24px; }
+.lede { max-width: 680px; font-size: 1.18rem; line-height: 1.7; }
+.hero-actions { margin-top: 30px; gap: 12px; }
+.hero-card { min-height: 410px; padding: 34px; justify-content: flex-start; }
+.hero-card-title { font-size: 1.05rem; font-weight: 600; letter-spacing: -.015em; margin-bottom: 12px; }
+.hero-card-copy { color: var(--muted); max-width: 420px; margin-bottom: auto; }
+.analysis-dimensions { border-top: 1px solid var(--line); width: 100%; margin-top: 32px; }
+.analysis-dimensions div { padding: 18px 0; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 190px 1fr; gap: 20px; align-items: start; }
+.analysis-dimensions strong { font-size: .98rem; }
+.analysis-dimensions span { color: var(--muted); font-size: .86rem; }
+.product-cards { padding-bottom: 88px; }
+.section-heading { padding: 0 0 22px; border-bottom: 1px solid var(--line); margin-bottom: 0; }
+.section-heading h2 { font-size: 1.35rem; font-weight: 500; }
+.product-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
+.product-grid article { min-height: 220px; padding: 30px 28px 34px 0; display: flex; flex-direction: column; align-items: flex-start; }
+.product-grid article + article { border-left: 1px solid var(--line); padding-left: 28px; }
+.product-grid h3 { font-size: 1.35rem; margin: 0 0 12px; letter-spacing: -.025em; }
+.product-grid p { color: var(--muted); max-width: 320px; margin-bottom: 24px; }
+.product-grid .text-link { margin-top: auto; }
+.page-head { padding: 58px 0 34px; align-items: end; }
+.page-head h1 { margin: 0 0 10px; }
+.page-head > div { max-width: 760px; }
+.page-head .muted { max-width: 720px; }
+.content-grid { gap: 22px; margin-bottom: 28px; }
+.panel { padding: 28px; }
+.panel-head { margin-bottom: 22px; }
+.metric-grid { gap: 14px; margin-bottom: 28px; }
+.metric-card { padding: 20px; min-height: 138px; }
+.dashboard-grid .panel { min-height: 210px; }
+.dashboard-grid .panel.span-2 { min-height: 260px; }
+.form-shell { margin-bottom: 76px; }
+.step { padding: 32px 0; }
+.step h2 { margin-bottom: 18px; font-size: 1.2rem; }
+.discovery-command { padding: 30px; margin-bottom: 22px; }
+.discovery-layout { gap: 22px; margin-bottom: 76px; }
+.filter-panel { padding: 24px; }
+.candidate-list { gap: 16px; }
+.candidate-card { padding: 28px; }
+.candidate-top h2 { font-size: 1.65rem; margin: 0 0 3px; }
+.score-row { gap: 18px; margin: 24px 0 18px; padding: 15px 0; }
+.auth { min-height: calc(100vh - 88px); padding: 50px 0; }
+.auth-card { padding: 38px; }
+.tabs { margin-bottom: 26px; }
+@media (max-width: 900px) {
+  .product-grid { grid-template-columns: 1fr; }
+  .product-grid article { min-height: auto; padding: 26px 0; }
+  .product-grid article + article { border-left: 0; border-top: 1px solid var(--line); padding-left: 0; }
+  .analysis-dimensions div { grid-template-columns: 1fr; gap: 5px; }
+  .hero { padding: 72px 0 64px; }
+}
+@media (max-width: 640px) {
+  .site-header.landing-header { grid-template-columns: auto auto; }
+  .hero { gap: 38px; padding: 55px 0 48px; }
+  .hero-card { min-height: auto; padding: 26px; }
+  .hero-actions .button { width: 100%; }
+  .page-head { padding: 42px 0 28px; }
+  .panel, .candidate-card, .discovery-command { padding: 22px; }
+}

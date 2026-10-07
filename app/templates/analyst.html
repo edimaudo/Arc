@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Analyst Workspace — Arc{% endblock %}
+{% block title %}M&A Analysis — Arc{% endblock %}
 {% block content %}
 {% if analysis %}
-<section class="wrap page-head"><div><p class="eyebrow">Analyst workspace</p><h1>{{ analysis.acquirer }} <span class="muted">×</span> {{ analysis.target }}</h1><p class="muted">{{ analysis.status }}</p></div><div class="hero-actions"><a class="button secondary" href="/discovery">Find companies</a><a class="button primary" href="/analysis/{{ analysis.analysis_id }}">Open full analysis</a></div></section>
+<section class="wrap page-head"><div><h1>{{ analysis.acquirer }} <span class="muted">×</span> {{ analysis.target }}</h1><p class="muted">{{ analysis.status }}</p></div><div class="hero-actions"><a class="button secondary" href="/discovery">Discovery</a><a class="button primary" href="/analysis/{{ analysis.analysis_id }}">Open full analysis</a></div></section>
 <section class="wrap metric-grid">
 {% for label, value in [("Strategic fit",analysis.overview.strategic_fit),("Cultural alignment",analysis.overview.cultural_alignment),("Audience expansion",analysis.overview.audience_expansion),("Financial fit",analysis.overview.financial_fit)] %}<div class="metric-card"><span>{{ label }}</span><strong>{{ value if value else '—' }}</strong>{% if value %}<div class="bar"><i style="width:{{ value }}%"></i></div>{% endif %}</div>{% endfor %}
 </section>
@@ -11,6 +11,6 @@
   <div class="panel"><div class="panel-head"><h2>Agent activity</h2></div><ol class="activity">{% for x in analysis.activity %}<li><span class="dot done"></span>{{ x.tool }}</li>{% endfor %}{% if not analysis.activity %}<li class="muted">No activity yet.</li>{% endif %}</ol></div>
 </section>
 {% else %}
-<section class="wrap page-head"><div><p class="eyebrow">Analyst workspace</p><h1>No investigation selected</h1><p class="muted">Create an analysis to open the detailed diligence workspace.</p></div><a class="button primary" href="/analysis/new">New analysis</a></section>
+<section class="wrap page-head"><div><h1>No investigation selected</h1><p class="muted">Start an M&A analysis to open the detailed diligence workspace.</p></div><a class="button primary" href="/analysis/new">Start M&A analysis</a></section>
 {% endif %}
 {% endblock %}

@@ -11,18 +11,20 @@
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
-  <header class="site-header">
+  <header class="site-header{% if request.url.path == '/' %} landing-header{% endif %}">
     <a class="wordmark" href="/">ARC</a>
+    {% if request.url.path != '/' %}
     <nav aria-label="Primary">
       <a href="/dashboard">Dashboard</a>
-      <a href="/analyst">Analyst</a>
-      <a href="/owner">Business owner</a>
-      <a href="/discovery">Find companies</a>
+      <a href="/analyst">M&A Analysis</a>
+      <a href="/owner">Executive Insights</a>
+      <a href="/discovery">Discovery</a>
     </nav>
+    {% endif %}
     <div class="header-tools">
-      <button class="text-btn" type="button" data-font="0.9">A−</button>
-      <button class="text-btn active" type="button" data-font="1">A</button>
-      <button class="text-btn" type="button" data-font="1.15">A+</button>
+      <button class="text-btn" type="button" data-font="0.9" aria-label="Small text">A−</button>
+      <button class="text-btn active" type="button" data-font="1" aria-label="Medium text">A</button>
+      <button class="text-btn" type="button" data-font="1.15" aria-label="Large text">A+</button>
       <button class="icon-btn" type="button" id="theme-toggle" aria-label="Toggle theme">◐</button>
     </div>
   </header>

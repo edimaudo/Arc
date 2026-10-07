@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}New Analysis — Arc{% endblock %}
+{% block title %}Start M&A Analysis — Arc{% endblock %}
 {% block content %}
-<section class="wrap page-head"><div><p class="eyebrow">New investigation</p><h1>Define the deal</h1><p class="muted">Give Arc the acquisition context and the question you need investigated.</p></div></section>
+<section class="wrap page-head"><div><h1>Start M&A analysis</h1><p class="muted">Set the acquisition context, upload supporting evidence, and choose the areas Arc should examine.</p></div></section>
 <section class="wrap form-shell">
 <form method="post" action="/analysis/start" enctype="multipart/form-data">
-  <div class="step"><span>01</span><div><h2>Deal</h2><div class="two-col"><label>Acquirer<input name="acquirer" value="{{ acquirer_default }}" placeholder="Acquiring company" required></label><label>Target<input name="target" value="{{ target_default }}" placeholder="Target company" required></label></div><label>Primary objective<select name="objective"><option>Full acquisition investigation</option><option>Cultural and audience due diligence</option><option>Identify growth opportunities</option><option>Find potential acquisition fits</option></select></label></div></div>
-  <div class="step"><span>02</span><div><h2>Evidence</h2><label class="upload"><input type="file" name="evidence" accept=".pdf,.xlsx,.xlsm,.csv" multiple><strong>Upload deal materials</strong><small>PDF, XLSX, CSV — extracted into Arc's investigation context</small></label></div></div>
-  <div class="step"><span>03</span><div><h2>Investigation scope</h2><div class="check-grid"><label><input type="checkbox" name="scopes" value="financial" checked> Financial</label><label><input type="checkbox" name="scopes" value="business" checked> Business & market</label><label><input type="checkbox" name="scopes" value="cultural" checked> Cultural intelligence</label><label><input type="checkbox" name="scopes" value="integration" checked> Integration</label></div></div></div>
-  <button class="button primary" type="submit">Create investigation</button>
+  <div class="step"><span aria-hidden="true">01</span><div><h2>Deal</h2><div class="two-col"><label>Acquirer<input name="acquirer" value="{{ acquirer_default }}" placeholder="Acquiring company" required></label><label>Target<input name="target" value="{{ target_default }}" placeholder="Target company" required></label></div><label>Primary objective<select name="objective"><option>Full acquisition investigation</option><option>Cultural and audience due diligence</option><option>Identify growth opportunities</option><option>Find potential acquisition fits</option></select></label></div></div>
+  <div class="step"><span aria-hidden="true">02</span><div><h2>Evidence</h2><label class="upload"><input type="file" name="evidence" accept=".pdf,.xlsx,.xlsm,.csv" multiple><strong>Upload deal materials</strong><small>PDF, XLSX, CSV — extracted into Arc's investigation context</small></label></div></div>
+  <div class="step"><span aria-hidden="true">03</span><div><h2>Investigation scope</h2><div class="check-grid"><label><input type="checkbox" name="scopes" value="financial" checked> Financial</label><label><input type="checkbox" name="scopes" value="business" checked> Business Intelligence</label><label><input type="checkbox" name="scopes" value="cultural" checked> Cultural Intelligence</label><label><input type="checkbox" name="scopes" value="integration" checked> Integration</label></div></div></div>
+  <button class="button primary" type="submit">Start M&A analysis</button>
 </form>
 </section>
 {% endblock %}

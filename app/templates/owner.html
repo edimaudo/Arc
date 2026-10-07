@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Business Owner — Arc{% endblock %}
+{% block title %}Executive Insights — Arc{% endblock %}
 {% block content %}
-<section class="wrap page-head"><div><p class="eyebrow">Business owner</p><h1>Executive acquisition view</h1><p class="muted">{{ owner_snapshot.company }}{% if owner_snapshot.target %} × {{ owner_snapshot.target }}{% endif %}</p></div><a class="button secondary" href="/discovery">Find potential companies</a></section>
+<section class="wrap page-head"><div><h1>Executive Insights</h1><p class="muted">{{ owner_snapshot.company }}{% if owner_snapshot.target %} × {{ owner_snapshot.target }}{% endif %}</p></div><a class="button secondary" href="/discovery">Discovery</a></section>
 {% if latest %}
 <section class="wrap metric-grid">
 {% for label, value in [("Strategic fit", owner_snapshot.strategic_fit),("Cultural alignment", owner_snapshot.cultural_alignment),("Audience expansion", owner_snapshot.audience_expansion),("Financial fit", owner_snapshot.financial_fit)] %}
@@ -12,9 +12,9 @@
   <div class="panel span-2"><div class="panel-head"><h2>What matters</h2><span class="status">{{ owner_snapshot.integration_risk }} integration risk</span></div>
     {% if latest.findings %}<div class="finding-list">{% for f in latest.findings[:5] %}<div><span>{{ '%02d'|format(loop.index) }}</span><h3>{{ f.title }}</h3><p>{{ f.body }}</p></div>{% endfor %}</div>{% else %}<div class="empty-state"><h3>Investigation not yet complete</h3><p class="muted">Run the analysis to surface executive findings.</p></div>{% endif %}
   </div>
-  <div class="panel"><div class="panel-head"><h2>Potential acquisitions</h2></div><p class="muted">Discover and score candidate companies against your acquisition thesis.</p><a class="button primary full" href="/discovery">Open discovery</a></div>
+  <div class="panel"><div class="panel-head"><h2>Potential Acquisitions</h2></div><p class="muted">Discover and score candidate companies against your acquisition thesis.</p><a class="button primary full" href="/discovery">Open discovery</a></div>
 </section>
 {% else %}
-<section class="wrap panel empty-state"><h2>No acquisition analysis yet</h2><p class="muted">Create an investigation first. The executive view will populate from live analysis results.</p><a class="button primary" href="/analysis/new">Start an analysis</a></section>
+<section class="wrap panel empty-state"><h2>No acquisition analysis yet</h2><p class="muted">Create an investigation first. The executive view will populate from live analysis results.</p><a class="button primary" href="/analysis/new">Start M&A analysis</a></section>
 {% endif %}
 {% endblock %}

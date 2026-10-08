@@ -1,23 +1,26 @@
 # Arc — M&A Cultural & Business Intelligence
 
-Arc is a FastAPI + Jinja2 application for M&A analysts and business decision-makers. It combines deterministic financial/business logic, Qloo cultural intelligence, and Gemini tool use to investigate acquisition questions.
+Arc is a tool for M&A analysts and business owners. It combines business insights with Qloo cultural intelligence and an AI analyst layer.
+It looks at M&A information through these lenses
 
-## Product surfaces
-- **Analyst** — detailed investigation workspace, evidence, cultural intelligence, activity and report.
-- **Business Insights** — executive view focused on fit, risks, growth opportunities and acquisition candidates.
-- **Find potential companies** — grounded company discovery with transparent component scores when sufficient evidence is available.
+- Analyst: investigation controls, evidence, findings, source/evidence drill-down, agent activity.
+- Business  workspace: executive overview, risk/synergy summary, potential company targets and fit scores.
+- Company discovery: candidate companies ranked on Strategic Fit, Cultural Fit, Audience Expansion, Financial Fit, Risk, and Overall Fit.
 
-## Qloo integration
-- Hackathon base URL: `https://hackathon.api.qloo.com`
-- Header: `X-Api-Key`
-- Entity resolution: `/search`
-- Cultural intelligence: `/v2/insights`
-- Cross-company comparison: `/v2/analysis/compare`
-- Cultural momentum: `/v2/trending`
-- **Do not use `/recommendations` or `/recs`.**
+## Architecture
+- Backend: FastAPI
+- Frontend: Jinja2 + vanilla JavaScript + CSS
+- Cultural intelligence: Qloo APIs (`/search`, `/v2/insights`, analysis/compare, trends)
+- AI: Gemini Flash
+~~- Storage for MVP: in-memory/demo data. Swap for SQLite/Postgres later.~~
 
-## Gemini integration
-Gemini 2.5 Pro is used through the Gemini Interactions API with custom function tools. Gemini can also use Google Search grounding for current public-company research. The application executes custom tool calls server-side and returns results to Gemini for subsequent steps.
+## Run
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
 
 ## Run
 ```bash

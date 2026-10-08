@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
+from fastapi.responses import RedirectResponse
 
 from app.services.analysis_service import get_latest_analysis, list_analyses
 
@@ -31,8 +32,8 @@ async def dashboard(request: Request):
     return TEMPLATES.TemplateResponse("dashboard.html", {"request": request, **_dashboard_snapshot()})
 
 
-@router.get("/owner")
-async def owner_workspace(request: Request):
+@router.get("/business")
+async def business_workspace(request: Request):
     latest = get_latest_analysis()
     snapshot = {
         "company": latest["acquirer"] if latest else "No acquisition selected",
@@ -43,7 +44,12 @@ async def owner_workspace(request: Request):
         "integration_risk": latest.get("overview", {}).get("integration_risk", "Pending") if latest else "Pending",
         "target": latest["target"] if latest else None,
     }
-    return TEMPLATES.TemplateResponse("owner.html", {"request": request, "owner_snapshot": snapshot, "latest": latest})
+    return TEMPLATES.TemplateResponse("owner.html", {"request": request, "business_snapshot": snapshot, "latest": latest})
+
+
+@router.get("/owner")
+async def owner_compatibility():
+    return RedirectResponse("/business", status_code=307)
 
 
 @router.get("/analyst")

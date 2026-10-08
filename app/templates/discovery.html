@@ -3,14 +3,14 @@
 {% block content %}
 <section class="wrap page-head"><div><h1>Discovery</h1><p class="muted">Identify and compare potential acquisition targets using business, financial, audience, and cultural signals.</p></div><a class="button secondary" href="/analysis/new">Start M&A analysis</a></section>
 <section class="wrap panel discovery-command">
-  <div><h2>Acquisition thesis</h2><p class="muted">Define what a good target looks like. Arc will research candidates and return only evidence-backed results.</p>
+  <div><h2>Discovery criteria</h2><p class="muted">Describe the acquisition profile. Arc will research candidates and return supported results.</p>
     <div class="two-col"><label>Acquirer<input id="discovery-acquirer" placeholder="Acquiring company" required></label><label>Sector<input id="sector" placeholder="Target sector" value="Consumer"></label></div>
     <div class="two-col"><label>Geography<input id="geography" value="Canada"></label><label>Thesis<input id="thesis" placeholder="e.g. Adjacent premium brands with audience expansion potential"></label></div>
     <div class="discovery-actions"><label>Minimum overall fit<input type="range" min="50" max="95" value="70" id="min-fit"><span class="range-value" id="min-fit-value">70</span></label><button class="button primary" id="refresh-shortlist">Run discovery</button></div>
   </div>
 </section>
 <section class="wrap discovery-layout">
-  <aside class="panel filter-panel"><h2>Score dimensions</h2><p class="muted">Scores are only shown where Arc has enough evidence to support the component.</p><div class="check-grid vertical"><label><input type="checkbox" checked disabled> Strategic fit</label><label><input type="checkbox" checked disabled> Cultural fit</label><label><input type="checkbox" checked disabled> Audience expansion</label><label><input type="checkbox" checked disabled> Financial fit</label></div><hr><p class="muted"><strong>Score model</strong><br>30% strategic<br>30% cultural<br>20% audience<br>20% financial</p></aside>
+  <aside class="panel filter-panel"><h2>Fit dimensions</h2><p class="muted">Each score is shown with the evidence available for that dimension.</p><div class="check-grid vertical"><label><input type="checkbox" checked disabled> Strategic fit</label><label><input type="checkbox" checked disabled> Cultural fit</label><label><input type="checkbox" checked disabled> Audience expansion</label><label><input type="checkbox" checked disabled> Financial fit</label></div><hr><p class="muted"><strong>Fit model</strong><br>30% strategic<br>30% cultural<br>20% audience<br>20% financial</p></aside>
   <div class="candidate-list" id="candidate-list"><div class="empty-state"><h3>Ready to search</h3><p class="muted">Enter an acquirer and acquisition thesis to generate a live shortlist.</p></div></div>
 </section>
 {% endblock %}

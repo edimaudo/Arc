@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — Arc{% endblock %}
 {% block content %}
-<section class="wrap page-head"><div><h1>Dashboard</h1><p class="muted">Review active M&A analyses and move into the right workspace.</p></div><a class="button primary" href="/analysis/new">Start M&A analysis</a></section>
+<section class="wrap page-head"><div><h1>Dashboard</h1><p class="muted">Review M&A analyses and move into the right view.</p></div><a class="button primary" href="/analysis/new">Start M&A analysis</a></section>
 <section class="wrap content-grid dashboard-grid">
-  <div class="panel span-2"><div class="panel-head"><h2>Recent investigations</h2><a href="/analyst">M&A Analysis</a></div>
+  <div class="panel span-2"><div class="panel-head"><h2>Recent M&A analyses</h2></div>
     {% if investigations %}<div class="table">
       {% for item in investigations %}<a class="table-row" href="/analysis/{{ item.analysis_id }}"><div><strong>{{ item.acquirer }}</strong><span>→ {{ item.target }}</span></div><div><span class="status">{{ item.status }}</span></div><div><strong>{{ item.fit }}</strong><span>strategic fit</span></div></a>{% endfor %}
     </div>{% else %}<div class="empty-state"><h3>No investigations yet</h3><p class="muted">Start an M&A analysis to begin working with deal evidence.</p><a class="button secondary" href="/analysis/new">Start M&A analysis</a></div>{% endif %}
   </div>
-  <div class="panel"><div class="panel-head"><h2>Business Insights</h2></div><p class="muted">A decision-focused view of the latest deal findings, risks, and opportunities.</p><a class="button secondary full" href="/owner">Open Business Insights</a></div>
+  <div class="panel"><div class="panel-head"><h2>Business Insights</h2></div><p class="muted">A decision-focused view of the latest deal findings, risks, and opportunities.</p><a class="button secondary full" href="/business">Open Business Insights</a></div>
   <div class="panel"><div class="panel-head"><h2>Discovery</h2></div><p class="muted">Find and screen potential acquisition targets against your acquisition thesis.</p><a class="button secondary full" href="/discovery">Open Discovery</a></div>
 </section>
 {% endblock %}

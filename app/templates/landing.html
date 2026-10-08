@@ -1,45 +1,38 @@
 {% extends "base.html" %}
 {% block title %}Arc — M&A Analysis{% endblock %}
 {% block content %}
-<section class="wrap hero">
-  <div class="hero-copy">
-    <h1>M&A analysis beyond the numbers.</h1>
-    <p class="lede">Arc helps M&A teams evaluate acquisition opportunities across financial performance, business fit, and cultural alignment.</p>
-    <div class="hero-actions">
-      <a class="button primary" href="/analysis/new">Start M&A analysis</a>
-      <a class="button secondary" href="/owner">Executive Insights</a>
-    </div>
-  </div>
-  <div class="hero-card" aria-label="Arc analysis dimensions">
-    <div class="hero-card-title">M&A Analysis</div>
-    <p class="hero-card-copy">One place to examine the financial, business, and cultural dimensions of an acquisition.</p>
-    <div class="analysis-dimensions">
-      <div><strong>Financial Intelligence</strong><span>Financial signals, performance and key diligence questions.</span></div>
-      <div><strong>Business Intelligence</strong><span>Market position, business model and strategic fit.</span></div>
-      <div><strong>Cultural Intelligence</strong><span>Brand, audience and cross-domain cultural signals.</span></div>
+<section class="landing-hero">
+  <div class="wrap landing-hero-inner">
+    <div class="landing-copy">
+      <h1>M&A analysis beyond the numbers.</h1>
+      <p class="landing-lede">Arc helps M&A teams assess acquisition opportunities across financial performance, business fit, and cultural alignment.</p>
+      <div class="hero-actions">
+        <a class="button primary" href="/analysis/new">Start M&A analysis</a>
+        <a class="button secondary" href="/owner">Business Insights</a>
+      </div>
     </div>
   </div>
 </section>
 
-<section class="wrap product-cards" aria-labelledby="arc-capabilities">
-  <div class="section-heading">
-    <h2 id="arc-capabilities">Arc helps you move from analysis to opportunity.</h2>
+<section class="wrap landing-products" aria-labelledby="product-heading">
+  <div class="landing-section-head">
+    <h2 id="product-heading">What you can do with Arc</h2>
   </div>
   <div class="product-grid">
-    <article>
+    <article class="product-card">
       <h3>M&A Analysis</h3>
-      <p>Evaluate a specific acquisition across financial, business, and cultural dimensions.</p>
-      <a class="text-link" href="/analysis/new">Start M&A analysis →</a>
+      <p>Assess a specific acquisition across financial, business, and cultural dimensions.</p>
+      <a class="text-link" href="/analysis/new">Start M&A analysis <span aria-hidden="true">→</span></a>
     </article>
-    <article>
+    <article class="product-card">
       <h3>Business Insights</h3>
-      <p>Give decision-makers a clear view of fit, risks, opportunities, and the evidence behind them.</p>
-      <a class="text-link" href="/owner">Open Executive Insights →</a>
+      <p>See the findings that matter to decision-makers, including risks, opportunities, and deal fit.</p>
+      <a class="text-link" href="/owner">Open Business Insights <span aria-hidden="true">→</span></a>
     </article>
-    <article>
+    <article class="product-card">
       <h3>Discovery</h3>
-      <p>Identify and compare potential acquisition targets against a defined acquisition thesis.</p>
-      <a class="text-link" href="/discovery">Explore Discovery →</a>
+      <p>Identify potential acquisition targets and compare their strategic, cultural, audience, and financial fit.</p>
+      <a class="text-link" href="/discovery">Explore Discovery <span aria-hidden="true">→</span></a>
     </article>
   </div>
 </section>

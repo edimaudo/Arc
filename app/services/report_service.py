@@ -21,7 +21,7 @@ def build_report_pdf(analysis: dict[str, Any]) -> bytes:
     story: list[Any] = []
     acq, tgt = analysis.get('acquirer', ''), analysis.get('target', '')
     story.append(Paragraph('ARC', styles['ArcSmall']))
-    story.append(Paragraph('Acquisition Intelligence Brief', styles['ArcTitle']))
+    story.append(Paragraph('M&A Analysis Report', styles['ArcTitle']))
     story.append(Paragraph(f'{_esc(acq)}  x  {_esc(tgt)}', styles['ArcH2']))
     story.append(Paragraph(_esc((analysis.get('report') or {}).get('executive_summary') or analysis.get('agent_output') or 'No executive summary was returned.'), styles['ArcBody']))
     story.append(Spacer(1, 8))

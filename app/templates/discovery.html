@@ -6,7 +6,7 @@
   <div><h2>Acquisition thesis</h2><p class="muted">Define what a good target looks like. Arc will research candidates and return only evidence-backed results.</p>
     <div class="two-col"><label>Acquirer<input id="discovery-acquirer" placeholder="Acquiring company" required></label><label>Sector<input id="sector" placeholder="Target sector" value="Consumer"></label></div>
     <div class="two-col"><label>Geography<input id="geography" value="Canada"></label><label>Thesis<input id="thesis" placeholder="e.g. Adjacent premium brands with audience expansion potential"></label></div>
-    <div class="discovery-actions"><label>Minimum overall fit<input type="range" min="50" max="95" value="70" id="min-fit"><span class="range-value" id="min-fit-value">70</span></label><button class="button primary" id="refresh-shortlist">Find companies</button></div>
+    <div class="discovery-actions"><label>Minimum overall fit<input type="range" min="50" max="95" value="70" id="min-fit"><span class="range-value" id="min-fit-value">70</span></label><button class="button primary" id="refresh-shortlist">Run discovery</button></div>
   </div>
 </section>
 <section class="wrap discovery-layout">
@@ -57,6 +57,6 @@ button?.addEventListener('click', async () => {
     filter();
   } catch(err) {
     list.innerHTML=`<div class="empty-state"><h3>Discovery failed</h3><p class="muted">${err.message}</p></div>`;
-  } finally { button.disabled=false; button.textContent='Find companies'; }
+  } finally { button.disabled=false; button.textContent='Run discovery'; }
 });
 </script>{% endblock %}

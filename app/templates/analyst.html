@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}M&A Analysis — Arc{% endblock %}
 {% block content %}
+{% set tool_labels = {'qloo_lookup_entities':'Matched cultural entities', 'qloo_cultural_insights':'Analyzed cultural affinities', 'qloo_compare_footprints':'Compared cultural footprints', 'qloo_trending_signals':'Reviewed cultural momentum', 'google_search':'Researched public company information', 'calculate_financial_fit':'Analyzed financial metrics', 'research_company':'Researched company profile', 'synthesize_findings':'Prepared findings and report'} %}
 {% if analysis %}
 <section class="wrap page-head"><div><h1>{{ analysis.acquirer }} <span class="muted">×</span> {{ analysis.target }}</h1><p class="muted">{{ analysis.status }}</p></div><div class="hero-actions"><a class="button secondary" href="/discovery">Discovery</a><a class="button primary" href="/analysis/{{ analysis.analysis_id }}">Open full analysis</a></div></section>
 <section class="wrap metric-grid">
@@ -8,7 +9,7 @@
 </section>
 <section class="wrap content-grid">
   <div class="panel span-2"><div class="panel-head"><h2>Key findings</h2><a href="/analysis/{{ analysis.analysis_id }}#report">View report</a></div>{% if analysis.findings %}{% for f in analysis.findings[:6] %}<article class="finding"><span class="tag {{ 'risk' if f.type=='Risk' else 'opportunity' }}">{{ f.type }}</span><h3>{{ f.title }}</h3><p>{{ f.body }}</p></article>{% endfor %}{% else %}<div class="empty-state"><h3>Analysis ready</h3><p class="muted">Open the investigation and run Arc to generate findings.</p><a class="button primary" href="/analysis/{{ analysis.analysis_id }}">Open investigation</a></div>{% endif %}</div>
-  <div class="panel"><div class="panel-head"><h2>Analysis activity</h2></div><ol class="activity">{% for x in analysis.activity %}<li><span class="dot done"></span>{{ x.tool }}</li>{% endfor %}{% if not analysis.activity %}<li class="muted">No activity yet.</li>{% endif %}</ol></div>
+  <div class="panel"><div class="panel-head"><h2>Agent activity</h2></div><ol class="activity">{% for x in analysis.activity %}<li><span class="dot done"></span>{{ tool_labels.get(x.tool, x.tool.replace('qloo_', '').replace('_', ' ')|title) }}</li>{% endfor %}{% if not analysis.activity %}<li class="muted">No activity yet.</li>{% endif %}</ol></div>
 </section>
 {% else %}
 <section class="wrap page-head"><div><h1>No investigation selected</h1><p class="muted">Start an M&A analysis to open the detailed diligence workspace.</p></div><a class="button primary" href="/analysis/new">Start M&A analysis</a></section>

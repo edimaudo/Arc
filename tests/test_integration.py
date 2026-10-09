@@ -90,5 +90,55 @@ class IntegrationTests(unittest.TestCase):
         self.assertTrue(pdf.content.startswith(b'%PDF'))
 
 
+    def test_landing_uses_public_shell_and_product_names(self):
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        body = response.text
+        # The public entry point uses a separate base template, so internal navigation cannot leak onto it.
+        self.assertNotIn('<nav', body)
+        self.assertNotIn('Dashboard', body)
+        self.assertNotIn('Analyst', body)
+        self.assertNotIn('Business Owner', body)
+        self.assertNotIn('Find Companies', body)
+        self.assertNotIn('Financial Intelligence', body)
+        self.assertNotIn('Business Intelligence', body)
+        self.assertNotIn('Cultural Intelligence', body)
+        self.assertNotIn('Qloo', body)
+        self.assertNotIn('Acquisition Intelligence', body)
+        self.assertNotIn('workflow', body.lower())
+        for title in ['M&amp;A Analysis', 'Business Insights', 'Discovery', 'Start M&amp;A analysis']:
+            self.assertIn(title, body)
+
+    def test_internal_navigation_uses_consistent_product_names(self):
+        response = self.client.get('/dashboard')
+        self.assertEqual(response.status_code, 200)
+        body = response.text
+        self.assertIn('<nav aria-label="Primary">', body)
+        self.assertIn('Dashboard</a>', body)
+        self.assertIn('M&amp;A Analysis</a>', body)
+        self.assertIn('Business Insights</a>', body)
+        self.assertIn('Discovery</a>', body)
+        self.assertNotIn('Business Owner', body)
+        self.assertNotIn('Find Companies', body)
+        self.assertNotIn('class="source-pill"', body)
+        self.assertNotIn('class="eyebrow"', body)
+        self.assertNotIn('class="kicker"', body)
+
+    def test_shared_internal_shell_and_no_eyebrow_components(self):
+        routes = ['/dashboard', '/analyst', '/owner', '/discovery', '/analysis/new', '/login', '/signup']
+        for route in routes:
+            with self.subTest(route=route):
+                response = self.client.get(route)
+                self.assertEqual(response.status_code, 200)
+                body = response.text
+                self.assertIn('<nav aria-label="Primary">', body)
+                self.assertIn('Business Insights</a>', body)
+                self.assertIn('M&amp;A Analysis</a>', body)
+                self.assertIn('Discovery</a>', body)
+                self.assertNotIn('class="eyebrow"', body)
+                self.assertNotIn('class="kicker"', body)
+                self.assertNotIn('class="source-pill"', body)
+
+
 if __name__ == '__main__':
     unittest.main()

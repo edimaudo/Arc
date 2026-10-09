@@ -1,14 +1,50 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — Arc{% endblock %}
 {% block content %}
-<section class="wrap page-head"><div><h1>Dashboard</h1><p class="muted">Review M&A analyses and move into the right view.</p></div><a class="button primary" href="/analysis/new">Start M&A analysis</a></section>
-<section class="wrap content-grid dashboard-grid">
-  <div class="panel span-2"><div class="panel-head"><h2>Recent M&A analyses</h2></div>
-    {% if investigations %}<div class="table">
-      {% for item in investigations %}<a class="table-row" href="/analysis/{{ item.analysis_id }}"><div><strong>{{ item.acquirer }}</strong><span>→ {{ item.target }}</span></div><div><span class="status">{{ item.status }}</span></div><div><strong>{{ item.fit }}</strong><span>strategic fit</span></div></a>{% endfor %}
-    </div>{% else %}<div class="empty-state"><h3>No investigations yet</h3><p class="muted">Start an M&A analysis to begin working with deal evidence.</p><a class="button secondary" href="/analysis/new">Start M&A analysis</a></div>{% endif %}
+<section class="wrap page-head">
+  <div>
+    <h1>Dashboard</h1>
+    <p class="muted">Review your M&amp;A analyses, business insights, and acquisition targets.</p>
   </div>
-  <div class="panel"><div class="panel-head"><h2>Business Insights</h2></div><p class="muted">A decision-focused view of the latest deal findings, risks, and opportunities.</p><a class="button secondary full" href="/business">Open Business Insights</a></div>
-  <div class="panel"><div class="panel-head"><h2>Discovery</h2></div><p class="muted">Find and screen potential acquisition targets against your acquisition thesis.</p><a class="button secondary full" href="/discovery">Open Discovery</a></div>
+  <a class="button primary" href="/analysis/new">Start M&amp;A analysis</a>
+</section>
+
+<section class="wrap dashboard-content">
+  <div class="panel recent-panel">
+    <div class="panel-head">
+      <h2>Recent investigations</h2>
+      <a class="text-link" href="/analyst">View M&amp;A analyses</a>
+    </div>
+    {% if investigations %}
+    <div class="table">
+      {% for item in investigations %}
+      <a class="table-row" href="/analysis/{{ item.analysis_id }}">
+        <div><strong>{{ item.acquirer }}</strong><span>→ {{ item.target }}</span></div>
+        <div><span class="status">{{ item.status }}</span></div>
+        <div><strong>{{ item.fit }}</strong><span>strategic fit</span></div>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state empty-state-inline">
+      <h3>No investigations yet</h3>
+      <p class="muted">Start an M&amp;A analysis to begin working with deal evidence.</p>
+      <a class="button secondary" href="/analysis/new">Start M&amp;A analysis</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="dashboard-shortcuts">
+    <article class="panel shortcut-card">
+      <h2>Business Insights</h2>
+      <p class="muted">Review the implications of a deal through executive findings, risks, and growth opportunities.</p>
+      <a class="button secondary" href="/owner">Open Business Insights</a>
+    </article>
+    <article class="panel shortcut-card">
+      <h2>Discovery</h2>
+      <p class="muted">Identify and compare potential acquisition targets against your acquisition strategy.</p>
+      <a class="button secondary" href="/discovery">Open Discovery</a>
+    </article>
+  </div>
 </section>
 {% endblock %}

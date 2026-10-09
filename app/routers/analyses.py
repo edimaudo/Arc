@@ -17,7 +17,7 @@ _agent = ArcAgent()
 
 @router.get('/new')
 async def new_analysis(request: Request):
-    return TEMPLATES.TemplateResponse('new_analysis.html', {'request': request, 'acquirer_default': request.query_params.get('acquirer', ''), 'target_default': request.query_params.get('target', '')})
+    return TEMPLATES.TemplateResponse(request, 'new_analysis.html', {'request': request, 'acquirer_default': request.query_params.get('acquirer', ''), 'target_default': request.query_params.get('target', '')})
 
 
 @router.post('/start')
@@ -56,8 +56,8 @@ async def analysis_detail(request: Request, analysis_id: str):
     try:
         data = get_analysis(analysis_id)
     except KeyError:
-        return TEMPLATES.TemplateResponse('analysis.html', {'request': request, 'error_page': 'Analysis not found.'}, status_code=404)
-    return TEMPLATES.TemplateResponse('analysis.html', {'request': request, **data})
+        return TEMPLATES.TemplateResponse(request, 'analysis.html', {'request': request, 'error_page': 'Analysis not found.'}, status_code=404)
+    return TEMPLATES.TemplateResponse(request, 'analysis.html', {'request': request, **data})
 
 
 @router.post('/{analysis_id}/run')

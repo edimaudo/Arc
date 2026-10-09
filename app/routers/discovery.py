@@ -14,7 +14,7 @@ _agent = ArcAgent()
 
 @router.get('')
 async def discovery_page(request: Request):
-    return TEMPLATES.TemplateResponse('discovery.html', {'request': request})
+    return TEMPLATES.TemplateResponse(request, 'discovery.html', {'request': request})
 
 
 @router.get('/api/candidates')

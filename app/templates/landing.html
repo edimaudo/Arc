@@ -1,34 +1,35 @@
-{% extends "base.html" %}
-{% block title %}Arc — M&A Analysis{% endblock %}
+{% extends "public_base.html" %}
+{% block title %}Arc — M&A Analysis, Business Insights & Discovery{% endblock %}
 {% block content %}
-<section class="landing-hero">
-  <div class="wrap landing-hero-inner">
-    <div class="landing-copy">
-      <h1>M&amp;A analysis beyond the numbers.</h1>
-      <p class="landing-lede">Arc helps M&amp;A teams assess acquisition opportunities across financial performance, business fit, audience overlap, and cultural alignment.</p>
-      <div class="hero-actions">
-        <a class="button primary" href="/analysis/new">Start M&amp;A analysis</a>
-        <a class="button secondary" href="/business">Business Insights</a>
-      </div>
+<section class="landing-hero wrap">
+  <div class="landing-hero-copy">
+    <h1>Make better M&amp;A decisions.</h1>
+    <p class="lede">Evaluate a target, understand the risks and growth opportunities, and discover companies that fit your acquisition strategy.</p>
+    <div class="hero-actions">
+      <a class="button primary" href="/analysis/new">Start M&amp;A analysis</a>
+      <a class="button secondary" href="/owner">Business Insights</a>
     </div>
   </div>
 </section>
 
-<section class="wrap landing-products" aria-label="Arc product areas">
+<section class="wrap product-cards" aria-labelledby="arc-capabilities">
+  <div class="section-heading">
+    <h2 id="arc-capabilities">One application. Three ways to move a deal forward.</h2>
+  </div>
   <div class="product-grid">
     <article class="product-card">
-      <h2>M&amp;A Analysis</h2>
-      <p>Assess a specific acquisition across financial performance, business fit, cultural alignment, risks, and opportunities.</p>
+      <h3>M&amp;A Analysis</h3>
+      <p>Assess a specific acquisition across financial performance, strategic fit, cultural alignment, and integration risk.</p>
       <a class="text-link" href="/analysis/new">Start M&amp;A analysis <span aria-hidden="true">→</span></a>
     </article>
     <article class="product-card">
-      <h2>Business Insights</h2>
-      <p>Give decision-makers a clear view of deal fit, important findings, growth opportunities, and integration concerns.</p>
-      <a class="text-link" href="/business">Open Business Insights <span aria-hidden="true">→</span></a>
+      <h3>Business Insights</h3>
+      <p>Understand the implications of a deal through clear findings, material risks, and growth opportunities.</p>
+      <a class="text-link" href="/owner">Open Business Insights <span aria-hidden="true">→</span></a>
     </article>
     <article class="product-card">
-      <h2>Discovery</h2>
-      <p>Identify potential acquisition targets and compare strategic, cultural, audience, and financial fit.</p>
+      <h3>Discovery</h3>
+      <p>Identify and compare potential acquisition targets against your strategy and screening criteria.</p>
       <a class="text-link" href="/discovery">Explore Discovery <span aria-hidden="true">→</span></a>
     </article>
   </div>

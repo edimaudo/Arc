@@ -7,34 +7,27 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/app.css?v=5">
+  <link rel="stylesheet" href="/static/css/app.css">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
-  <header class="site-header{% if request.url.path == '/' %} landing-header{% endif %}">
-    <div class="header-left">
-      <a class="wordmark" href="/" aria-label="Arc home">ARC</a>
-      {% if request.url.path != '/' %}
-      <nav aria-label="Primary">
-        <a class="{% if request.url.path == '/dashboard' %}active{% endif %}" href="/dashboard">Dashboard</a>
-        <a class="{% if request.url.path.startswith('/analyst') or request.url.path.startswith('/analysis') %}active{% endif %}" href="/analyst">M&amp;A Analysis</a>
-        <a class="{% if request.url.path in ['/owner','/business'] %}active{% endif %}" href="/business">Business Insights</a>
-        <a class="{% if request.url.path.startswith('/discovery') %}active{% endif %}" href="/discovery">Discovery</a>
-      </nav>
-      {% endif %}
-    </div>
-    <div class="header-actions">
-      {% if request.url.path == '/' %}<a class="header-link" href="/login">Sign in</a>{% endif %}
-      <div class="header-tools" aria-label="Display controls">
-        <button class="text-btn" type="button" data-font="0.9" aria-label="Small text">A−</button>
-        <button class="text-btn active" type="button" data-font="1" aria-label="Medium text">A</button>
-        <button class="text-btn" type="button" data-font="1.15" aria-label="Large text">A+</button>
-        <button class="icon-btn" type="button" id="theme-toggle" aria-label="Toggle theme">◐</button>
-      </div>
+  <header class="site-header">
+    <a class="wordmark" href="/">ARC</a>
+    <nav aria-label="Primary">
+      <a href="/dashboard"{% if request.url.path == '/dashboard' %} aria-current="page"{% endif %}>Dashboard</a>
+      <a href="/analyst"{% if request.url.path == '/analyst' or request.url.path.startswith('/analysis') %} aria-current="page"{% endif %}>M&amp;A Analysis</a>
+      <a href="/owner"{% if request.url.path == '/owner' %} aria-current="page"{% endif %}>Business Insights</a>
+      <a href="/discovery"{% if request.url.path.startswith('/discovery') %} aria-current="page"{% endif %}>Discovery</a>
+    </nav>
+    <div class="header-tools">
+      <button class="text-btn" type="button" data-font="0.9" aria-label="Small text">A−</button>
+      <button class="text-btn active" type="button" data-font="1" aria-label="Medium text">A</button>
+      <button class="text-btn" type="button" data-font="1.15" aria-label="Large text">A+</button>
+      <button class="icon-btn" type="button" id="theme-toggle" aria-label="Toggle theme">◐</button>
     </div>
   </header>
   <main id="main">{% block content %}{% endblock %}</main>
-  <script src="/static/js/app.js?v=5"></script>
+  <script src="/static/js/app.js"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

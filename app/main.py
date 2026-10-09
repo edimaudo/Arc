@@ -19,17 +19,17 @@ app.include_router(discovery.router)
 
 @app.get('/', name='landing')
 async def landing(request: Request):
-    return templates.TemplateResponse('landing.html', {'request': request})
+    return templates.TemplateResponse(request, 'landing.html', {'request': request})
 
 
 @app.get('/login', name='login')
 async def login(request: Request):
-    return templates.TemplateResponse('auth.html', {'request': request, 'mode': 'Sign in'})
+    return templates.TemplateResponse(request, 'auth.html', {'request': request, 'mode': 'Sign in'})
 
 
 @app.get('/signup', name='signup')
 async def signup(request: Request):
-    return templates.TemplateResponse('auth.html', {'request': request, 'mode': 'Create account'})
+    return templates.TemplateResponse(request, 'auth.html', {'request': request, 'mode': 'Create account'})
 
 
 @app.get('/health')

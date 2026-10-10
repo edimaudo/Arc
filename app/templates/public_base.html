@@ -15,7 +15,12 @@
   <header class="site-header public-header">
     <a class="wordmark" href="/" aria-label="Arc home">ARC</a>
     <div class="public-header-actions">
+      {% if request.session.get('user_id') %}
+      <a class="sign-in-link" href="/dashboard">Open workspace</a>
+    {% else %}
       <a class="sign-in-link" href="/login">Sign in</a>
+      <a class="sign-in-link" href="/signup">Create account</a>
+    {% endif %}
       <div class="header-tools" aria-label="Display settings">
         <button class="text-btn" type="button" data-font="0.9" aria-label="Small text">A−</button>
         <button class="text-btn active" type="button" data-font="1" aria-label="Medium text">A</button>

@@ -12,27 +12,31 @@ init_db()
 _AGENT = ArcAgent()
 
 
-def list_analyses() -> list[dict[str, Any]]:
-    return load_analyses()
+def list_analyses(owner_id: str | None = None) -> list[dict[str, Any]]:
+    items = load_analyses()
+    if owner_id is not None:
+        items = [item for item in items if item.get('owner_id') == owner_id]
+    return items
 
 
-def get_analysis(analysis_id: str) -> dict[str, Any]:
+def get_analysis(analysis_id: str, owner_id: str | None = None) -> dict[str, Any]:
     analysis = load_analysis(analysis_id)
-    if not analysis:
+    if not analysis or (owner_id is not None and analysis.get('owner_id') != owner_id):
         raise KeyError(analysis_id)
     return analysis
 
 
-def get_latest_analysis() -> dict[str, Any] | None:
-    items = list_analyses()
+def get_latest_analysis(owner_id: str | None = None) -> dict[str, Any] | None:
+    items = list_analyses(owner_id=owner_id)
     return items[0] if items else None
 
 
-def create_analysis(acquirer: str, target: str, objective: str, scopes: list[str]) -> str:
+def create_analysis(acquirer: str, target: str, objective: str, scopes: list[str], owner_id: str | None = None) -> str:
     analysis_id = f'analysis-{uuid.uuid4().hex[:10]}'
     now = datetime.now(timezone.utc).isoformat()
     base = {
         'analysis_id': analysis_id,
+        'owner_id': owner_id,
         'acquirer': acquirer,
         'target': target,
         'status': 'Ready to investigate',
@@ -65,8 +69,8 @@ def create_analysis(acquirer: str, target: str, objective: str, scopes: list[str
     return analysis_id
 
 
-async def run_investigation(analysis_id: str) -> dict[str, Any]:
-    analysis = get_analysis(analysis_id)
+async def run_investigation(analysis_id: str, owner_id: str | None = None) -> dict[str, Any]:
+    analysis = get_analysis(analysis_id, owner_id=owner_id)
     analysis['status'] = 'Investigation in progress'
     save_analysis(analysis)
     goal = {

@@ -1,14 +1,15 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import JSONResponse
 
 from app.services.agent_service import ArcAgent
 from app.services.discovery_service import explain_score
+from app.auth import require_authenticated
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / 'templates'))
-router = APIRouter(prefix='/discovery', tags=['discovery'])
+router = APIRouter(prefix='/discovery', tags=['discovery'], dependencies=[Depends(require_authenticated)])
 _agent = ArcAgent()
 
 

@@ -3,6 +3,7 @@
 {% block content %}
 <section class="wrap page-head"><div><h1>Start M&A analysis</h1><p class="muted">Set the acquisition context, upload supporting evidence, and choose the areas Arc should examine.</p></div></section>
 <section class="wrap form-shell">
+{% if form_error %}<div class="form-alert" role="alert">{{ form_error }}</div>{% endif %}
 <form method="post" action="/analysis/start" enctype="multipart/form-data">
   <div class="step"><span aria-hidden="true">01</span><div><h2>Deal</h2><div class="two-col"><label>Acquirer<input name="acquirer" value="{{ acquirer_default }}" placeholder="Acquiring company" required></label><label>Target<input name="target" value="{{ target_default }}" placeholder="Target company" required></label></div><label>Primary objective<select name="objective"><option>Full acquisition investigation</option><option>Cultural and audience due diligence</option><option>Identify growth opportunities</option><option>Find potential acquisition fits</option></select></label></div></div>
   <div class="step"><span aria-hidden="true">02</span><div><h2>Evidence</h2><label class="upload"><input type="file" name="evidence" accept=".pdf,.xlsx,.xlsm,.csv" multiple><strong>Upload deal materials</strong><small>PDF, XLSX, CSV — extracted into Arc's investigation context</small></label></div></div>

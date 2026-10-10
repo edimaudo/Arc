@@ -1,15 +1,19 @@
-{% extends "base.html" %}
+{% extends "public_base.html" %}
 {% block title %}{{ mode }} — Arc{% endblock %}
 {% block content %}
 <section class="auth wrap">
   <div class="auth-card">
     <h1>{{ mode }}</h1>
-    <p class="muted">Access your Arc workspace.</p>
-    <form onsubmit="event.preventDefault(); window.location='/dashboard';">
-      <label>Email<input type="email" required placeholder="you@company.com"></label>
-      <label>Password<input type="password" required placeholder="••••••••"></label>
+    <p class="muted">{% if mode == 'Sign in' %}Sign in to continue to your Arc workspace.{% else %}Create an account to save and manage your M&amp;A analyses.{% endif %}</p>
+    {% if error %}<div class="form-alert" role="alert">{{ error }}</div>{% endif %}
+    <form method="post" action="{% if mode == 'Sign in' %}/login{% else %}/signup{% endif %}">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      {% if mode != 'Sign in' %}<label for="display-name">Name <span class="muted">(optional)</span><input id="display-name" name="display_name" type="text" maxlength="100" autocomplete="name"></label>{% endif %}
+      <label for="email">Email<input id="email" name="email" type="email" required maxlength="254" autocomplete="email" placeholder="you@company.com"></label>
+      <label for="password">Password<input id="password" name="password" type="password" required minlength="{% if mode == 'Sign in' %}1{% else %}10{% endif %}" maxlength="256" autocomplete="{% if mode == 'Sign in' %}current-password{% else %}new-password{% endif %}" placeholder="{% if mode == 'Sign in' %}Enter your password{% else %}At least 10 characters{% endif %}"></label>
       <button class="button primary full" type="submit">{{ mode }}</button>
     </form>
+    <p class="auth-switch">{% if mode == 'Sign in' %}New to Arc? <a href="/signup?next={{ next_url|urlencode }}">Create an account</a>{% else %}Already have an account? <a href="/login?next={{ next_url|urlencode }}">Sign in</a>{% endif %}</p>
   </div>
 </section>
 {% endblock %}

@@ -1,16 +1,17 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.templating import Jinja2Templates
 
 from app.services.analysis_service import get_latest_analysis, list_analyses
+from app.auth import require_authenticated
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / "templates"))
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_authenticated)])
 
 
-def _dashboard_snapshot() -> dict:
-    analyses = list_analyses()
+def _dashboard_snapshot(owner_id: str) -> dict:
+    analyses = list_analyses(owner_id=owner_id)
     return {
         "investigations": [
             {
@@ -22,18 +23,18 @@ def _dashboard_snapshot() -> dict:
             }
             for a in analyses
         ],
-        "latest": get_latest_analysis(),
+        "latest": get_latest_analysis(owner_id=owner_id),
     }
 
 
 @router.get("/dashboard")
 async def dashboard(request: Request):
-    return TEMPLATES.TemplateResponse(request, "dashboard.html", {"request": request, **_dashboard_snapshot()})
+    return TEMPLATES.TemplateResponse(request, "dashboard.html", {"request": request, **_dashboard_snapshot(request.state.user["user_id"])})
 
 
 @router.get("/owner")
 async def owner_workspace(request: Request):
-    latest = get_latest_analysis()
+    latest = get_latest_analysis(owner_id=request.state.user["user_id"])
     snapshot = {
         "company": latest["acquirer"] if latest else "No acquisition selected",
         "strategic_fit": latest.get("overview", {}).get("strategic_fit", 0) if latest else 0,
@@ -48,7 +49,7 @@ async def owner_workspace(request: Request):
 
 @router.get("/analyst")
 async def analyst_workspace(request: Request):
-    latest = get_latest_analysis()
+    latest = get_latest_analysis(owner_id=request.state.user["user_id"])
     if not latest:
         return TEMPLATES.TemplateResponse(request, "analyst.html", {"request": request, "analysis": None})
     return TEMPLATES.TemplateResponse(request, "analyst.html", {"request": request, "analysis": latest})

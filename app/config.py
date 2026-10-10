@@ -17,6 +17,9 @@ def env(name: str, default: str = '') -> str:
 
 
 APP_NAME = env('APP_NAME', 'Arc')
+APP_ENV = env('APP_ENV', 'development').lower()
+# Set ARC_SESSION_SECRET to a long random value in hosted/production environments.
+SESSION_SECRET = env('ARC_SESSION_SECRET')
 QLOO_API_KEY = env('QLOO_API_KEY')
 QLOO_BASE_URL = env('QLOO_BASE_URL', 'https://hackathon.api.qloo.com').rstrip('/')
 QLOO_TIMEOUT_SECONDS = float(env('QLOO_TIMEOUT_SECONDS', '25') or '25')

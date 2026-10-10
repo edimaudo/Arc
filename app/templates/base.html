@@ -20,6 +20,7 @@
       <a href="/discovery"{% if request.url.path.startswith('/discovery') %} aria-current="page"{% endif %}>Discovery</a>
     </nav>
     <div class="header-tools">
+      {% if request.session.get('user_id') %}<form class="logout-form" method="post" action="/logout"><button class="text-btn logout-btn" type="submit">Sign out</button></form>{% endif %}
       <button class="text-btn" type="button" data-font="0.9" aria-label="Small text">A−</button>
       <button class="text-btn active" type="button" data-font="1" aria-label="Medium text">A</button>
       <button class="text-btn" type="button" data-font="1.15" aria-label="Large text">A+</button>

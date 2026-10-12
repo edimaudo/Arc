@@ -11,12 +11,16 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import APP_NAME, APP_ENV, BASE_DIR, SESSION_SECRET
 from app.db import init_db, get_or_create_setting
-from app.auth import authenticate_user, clear_user_session, safe_next_path, set_user_session, signup_user
-from app.routers import dashboard, analyses, discovery
+from app.auth import (authenticate_user, clear_user_session, safe_next_path, set_user_session, signup_user, ensure_demo_account, DEMO_EMAIL, DEMO_PASSWORD)
 
 logger = logging.getLogger(__name__)
 init_db()
+ensure_demo_account()
 SESSION_KEY = SESSION_SECRET or get_or_create_setting("session_secret", secrets.token_urlsafe(64))
+
+# Import routers only after database schema/account initialization. Their services
+# create clients at import time and must see a ready application environment.
+from app.routers import dashboard, analyses, discovery
 app = FastAPI(title=APP_NAME, version='0.3.0')
 templates = Jinja2Templates(directory=str(BASE_DIR / 'templates'))
 app.mount('/static', StaticFiles(directory=str(BASE_DIR / 'static')), name='static')
@@ -44,6 +48,7 @@ async def login_page(request: Request, next: str = '/dashboard'):
         return RedirectResponse(safe_next_path(next), status_code=303)
     return templates.TemplateResponse(request, 'auth.html', {
         'request': request, 'mode': 'Sign in', 'next_url': safe_next_path(next), 'error': None,
+        'demo_email': DEMO_EMAIL, 'demo_password': DEMO_PASSWORD,
     })
 
 
@@ -54,12 +59,43 @@ async def login_submit(
     password: str = Form(...),
     next: str = Form('/dashboard'),
 ):
-    user = authenticate_user(email, password)
+    try:
+        user = authenticate_user(email, password)
+    except Exception:
+        logger.exception('Sign-in could not query the account database')
+        return templates.TemplateResponse(request, 'auth.html', {
+            'request': request, 'mode': 'Sign in', 'next_url': safe_next_path(next),
+            'error': 'Arc could not access the account database. Check ARC_DB_PATH and database write permissions, then retry.',
+            'demo_email': DEMO_EMAIL, 'demo_password': DEMO_PASSWORD,
+        }, status_code=503)
     if not user:
         return templates.TemplateResponse(request, 'auth.html', {
             'request': request, 'mode': 'Sign in', 'next_url': safe_next_path(next),
             'error': 'Email or password is incorrect.',
+            'demo_email': DEMO_EMAIL, 'demo_password': DEMO_PASSWORD,
         }, status_code=401)
+    set_user_session(request, user)
+    return RedirectResponse(safe_next_path(next), status_code=303)
+
+
+@app.post('/demo-login', name='demo_login')
+async def demo_login(request: Request, next: str = Form('/dashboard')):
+    """Sign in to the shared, non-confidential demo workspace."""
+    try:
+        user = authenticate_user(DEMO_EMAIL, DEMO_PASSWORD)
+        if not user:
+            # Reconcile the account if a deployment's DB was restored without the demo user.
+            ensure_demo_account()
+            user = authenticate_user(DEMO_EMAIL, DEMO_PASSWORD)
+        if not user:
+            raise RuntimeError('Demo account exists but its configured password could not be verified.')
+    except Exception:
+        logger.exception('Demo sign-in failed')
+        return templates.TemplateResponse(request, 'auth.html', {
+            'request': request, 'mode': 'Sign in', 'next_url': safe_next_path(next),
+            'error': 'Arc could not initialize demo sign-in. Check that ARC_DB_PATH points to a writable location, then restart the app.',
+            'demo_email': DEMO_EMAIL, 'demo_password': DEMO_PASSWORD,
+        }, status_code=503)
     set_user_session(request, user)
     return RedirectResponse(safe_next_path(next), status_code=303)
 
@@ -70,6 +106,7 @@ async def signup_page(request: Request, next: str = '/dashboard'):
         return RedirectResponse(safe_next_path(next), status_code=303)
     return templates.TemplateResponse(request, 'auth.html', {
         'request': request, 'mode': 'Create account', 'next_url': safe_next_path(next), 'error': None,
+        'demo_email': DEMO_EMAIL, 'demo_password': DEMO_PASSWORD,
     })
 
 

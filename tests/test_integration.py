@@ -10,9 +10,10 @@ os.environ['QLOO_API_KEY'] = 'test'
 os.environ['ARC_DB_PATH'] = str(Path(tempfile.gettempdir()) / 'arc_integration.sqlite3')
 
 from app.main import app
+from app.auth import DEMO_EMAIL, DEMO_PASSWORD, ensure_demo_account
 from app.services import analysis_service
 from app.services.agent_service import ArcAgent
-from app.db import get_user_by_email
+from app.db import get_user_by_email, update_user_password
 from app.routers import discovery
 from fastapi.testclient import TestClient
 
@@ -167,6 +168,26 @@ class IntegrationTests(unittest.TestCase):
         api = anonymous.get('/discovery/api/candidates?acquirer=A&sector=Retail')
         self.assertEqual(api.status_code, 401)
         self.assertEqual(api.json()['detail']['message'], 'Sign in to continue.')
+
+    def test_demo_account_exists_and_can_sign_in_without_signup(self):
+        # Exercise an existing deployment DB where a stale/incomplete demo record
+        # may already exist: startup reconciliation should restore the configured password.
+        existing = get_user_by_email(DEMO_EMAIL)
+        if existing:
+            update_user_password(existing['user_id'], 'stale-invalid-hash')
+        ensure_demo_account()
+        from app.auth import authenticate_user
+        self.assertIsNotNone(authenticate_user(DEMO_EMAIL, DEMO_PASSWORD))
+        anonymous = TestClient(app, follow_redirects=False)
+        page = anonymous.get('/login?next=/analysis/new')
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(DEMO_EMAIL, page.text)
+        self.assertIn(DEMO_PASSWORD, page.text)
+        self.assertIn('Continue with demo account', page.text)
+        login = anonymous.post('/demo-login', data={'next': '/analysis/new'})
+        self.assertEqual(login.status_code, 303)
+        self.assertEqual(login.headers.get('location'), '/analysis/new')
+        self.assertEqual(anonymous.get('/analysis/new').status_code, 200)
 
     def test_signup_login_logout_and_return_to_requested_page(self):
         anonymous = TestClient(app, follow_redirects=False)

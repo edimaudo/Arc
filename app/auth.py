@@ -5,11 +5,12 @@ import hashlib
 import hmac
 import re
 import secrets
+import os
 from urllib.parse import quote
 
 from fastapi import HTTPException, Request
 
-from app.db import create_user_record, get_user_by_email, get_user_by_id, claim_legacy_analyses_for_first_user
+from app.db import create_user_record, get_user_by_email, get_user_by_id, claim_legacy_analyses_for_first_user, update_user_password
 
 PBKDF2_ITERATIONS = 310_000
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
@@ -37,6 +38,37 @@ def verify_password(password: str, encoded: str) -> bool:
         return hmac.compare_digest(actual, expected)
     except (ValueError, TypeError):
         return False
+
+
+# A predictable, non-confidential demo account is created at startup so reviewers
+# can enter the app without registering. Override these with environment variables
+# if this deployment needs different demo credentials.
+DEMO_EMAIL = os.getenv("ARC_DEMO_EMAIL", "demo@arc.app").strip().lower()
+DEMO_PASSWORD = os.getenv("ARC_DEMO_PASSWORD", "ArcDemo2026!")
+DEMO_USER_ID = "arc-demo-user"
+
+def ensure_demo_account() -> dict:
+    existing = get_user_by_email(DEMO_EMAIL)
+    if existing:
+        # Keep the demo credentials deterministic across redeployments/restored DBs.
+        if not verify_password(DEMO_PASSWORD, existing.get("password_hash", "")):
+            update_user_password(existing["user_id"], hash_password(DEMO_PASSWORD))
+            existing = get_user_by_email(DEMO_EMAIL)
+        if not existing:
+            raise RuntimeError("Arc demo account could not be initialized")
+        return {"user_id": existing["user_id"], "email": existing["email"], "display_name": existing.get("display_name", "Arc Demo")}
+    try:
+        create_user_record(DEMO_USER_ID, DEMO_EMAIL, "Arc Demo", hash_password(DEMO_PASSWORD))
+    except Exception:
+        # Safe under simultaneous app workers: only suppress if another worker
+        # successfully created the same account. Otherwise preserve the real error.
+        existing = get_user_by_email(DEMO_EMAIL)
+        if not existing:
+            raise
+    existing = get_user_by_email(DEMO_EMAIL)
+    if not existing:
+        raise RuntimeError("Arc demo account could not be initialized")
+    return {"user_id": existing["user_id"], "email": existing["email"], "display_name": existing.get("display_name", "Arc Demo")}
 
 def valid_email(email: str) -> bool:
     return bool(EMAIL_RE.fullmatch(normalize_email(email)))

@@ -86,6 +86,10 @@ def create_user_record(user_id: str, email: str, display_name: str, password_has
             (user_id, email.strip().lower(), display_name.strip(), password_hash, dt.datetime.now(dt.timezone.utc).isoformat()),
         )
 
+def update_user_password(user_id: str, password_hash: str) -> None:
+    with _connect() as conn:
+        conn.execute("UPDATE users SET password_hash = ? WHERE user_id = ?", (password_hash, user_id))
+
 def get_user_by_email(email: str) -> dict[str, Any] | None:
     with _connect() as conn:
         row = conn.execute(

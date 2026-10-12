@@ -443,3 +443,11 @@ input, select, textarea { border-radius: 3px; min-height: 46px; }
 .auth-card form { display: grid; gap: 18px; }
 .auth-card label { display: grid; gap: 7px; }
 .auth-card input { width: 100%; }
+
+
+/* Sign-in demo access: visually distinct but consistent with Arc's restrained UI. */
+.demo-access { margin: 1.25rem 0 1.5rem; padding: 1rem 1.1rem; border: 1px solid var(--border, #d8dce2); border-radius: 12px; background: var(--panel, rgba(127,127,127,.045)); }
+.demo-access h2 { margin: 0 0 .65rem; font-size: 1.05rem; font-weight: 600; }
+.demo-access p { margin: .3rem 0; }
+.demo-access code { font-size: .92em; overflow-wrap: anywhere; }
+.demo-access form { margin-top: .85rem; }

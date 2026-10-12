@@ -6,6 +6,18 @@
     <h1>{{ mode }}</h1>
     <p class="muted">{% if mode == 'Sign in' %}Sign in to continue to your Arc workspace.{% else %}Create an account to save and manage your M&amp;A analyses.{% endif %}</p>
     {% if error %}<div class="form-alert" role="alert">{{ error }}</div>{% endif %}
+    {% if mode == 'Sign in' %}
+    <div class="demo-access" role="note" aria-label="Demo account details">
+      <h2>Demo account</h2>
+      <p><strong>Email:</strong> <code>{{ demo_email }}</code></p>
+      <p><strong>Password:</strong> <code>{{ demo_password }}</code></p>
+      <p class="muted">Use this shared account for non-confidential demonstration data only.</p>
+      <form method="post" action="/demo-login">
+        <input type="hidden" name="next" value="{{ next_url }}">
+        <button class="button secondary full" type="submit">Continue with demo account</button>
+      </form>
+    </div>
+    {% endif %}
     <form method="post" action="{% if mode == 'Sign in' %}/login{% else %}/signup{% endif %}">
       <input type="hidden" name="next" value="{{ next_url }}">
       {% if mode != 'Sign in' %}<label for="display-name">Name <span class="muted">(optional)</span><input id="display-name" name="display_name" type="text" maxlength="100" autocomplete="name"></label>{% endif %}

@@ -1,0 +1,58 @@
+"""Regression tests to ensure the corrected Arc UX ships with demo auth."""
+import os
+import tempfile
+from pathlib import Path
+
+os.environ.setdefault('GEMINI_API_KEY', 'test-key')
+os.environ.setdefault('QLOO_API_KEY', 'test-key')
+os.environ['ARC_DB_PATH'] = str(Path(tempfile.gettempdir()) / 'arc_ux_auth_merge_test.sqlite3')
+
+from fastapi.testclient import TestClient
+from app.main import app
+from app.auth import DEMO_EMAIL, DEMO_PASSWORD
+
+
+def test_public_landing_uses_correct_product_cards_and_no_internal_navigation():
+    with TestClient(app, follow_redirects=False) as client:
+        response = client.get('/')
+    assert response.status_code == 200
+    html = response.text
+    for expected in ['Start M&amp;A analysis', 'M&amp;A Analysis', 'Business Insights', 'Discovery']:
+        assert expected in html
+    for forbidden in ['Find Companies', 'Business Owner', 'Financial Intelligence', 'Business Intelligence', 'Cultural Intelligence', 'Acquisition Intelligence', 'Qloo Intelligence']:
+        assert forbidden not in html
+    # Public page exposes account access, but not internal workspace nav labels.
+    assert '>Sign in<' in html
+    assert 'href="/dashboard"' not in html
+    assert '>Dashboard<' not in html
+    assert '>Analyst<' not in html
+
+
+def test_templates_have_no_eyebrow_or_kicker_elements():
+    template_root = Path(__file__).parents[1] / 'app' / 'templates'
+    for path in template_root.glob('*.html'):
+        source = path.read_text(encoding='utf-8').lower()
+        assert 'class="eyebrow' not in source, path.name
+        assert 'class="kicker' not in source, path.name
+
+
+def test_demo_account_is_visible_and_one_click_signin_opens_workspace():
+    with TestClient(app, follow_redirects=False) as client:
+        page = client.get('/login')
+        assert page.status_code == 200
+        assert DEMO_EMAIL in page.text
+        assert DEMO_PASSWORD in page.text
+        assert 'Continue with demo account' in page.text
+        signed_in = client.post('/demo-login', data={'next': '/dashboard'})
+        assert signed_in.status_code == 303
+        assert signed_in.headers['location'] == '/dashboard'
+        dashboard = client.get('/dashboard')
+        assert dashboard.status_code == 200
+        assert 'Dashboard' in dashboard.text
+
+
+def test_protected_analysis_redirects_to_signin_with_return_path():
+    with TestClient(app, follow_redirects=False) as client:
+        response = client.get('/analysis/new')
+    assert response.status_code == 303
+    assert response.headers['location'].startswith('/login?next=')

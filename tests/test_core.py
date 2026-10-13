@@ -1,25 +1,35 @@
 import asyncio
 import os
-import tempfile
 import unittest
-from pathlib import Path
 
 os.environ['GEMINI_API_KEY'] = 'unit-test'
 os.environ['QLOO_API_KEY'] = 'unit-test'
-os.environ['ARC_DB_PATH'] = str(Path(tempfile.gettempdir()) / 'arc_unit.sqlite3')
 
-from app.db import init_db
 from app.services.agent_service import ArcAgent
-from app.services.analysis_service import create_analysis, get_analysis
+from app.services.analysis_service import create_analysis, run_investigation
 from app.services.document_service import parse_document
 from app.services.discovery_service import explain_score
 
 
-class CoreTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        init_db()
+class StubAgent:
+    async def run(self, goal, max_turns=12):
+        return {
+            'output': 'Structured acquisition assessment.',
+            'activity': [{'tool': 'qloo_lookup_entities', 'status': 'complete'}],
+            'findings': [{'type': 'Opportunity', 'title': 'Audience adjacency', 'body': 'Target opens adjacent audience territory.'}],
+            'risks': [{'type': 'Risk', 'title': 'Brand positioning', 'body': 'Positioning requires diligence.'}],
+            'opportunities': [{'title': 'Cross-sell', 'body': 'Potential cross-sell opportunity.'}],
+            'diligence_questions': ['Validate customer concentration.'],
+            'scores': {'strategic_fit': 82, 'cultural_fit': 79, 'audience_expansion': 88, 'financial_fit': 74, 'integration_risk': 'Moderate'},
+            'financial': {'revenue_growth': 0.12, 'ebitda_margin': 0.22, 'net_debt_to_ebitda': 1.8, 'customer_concentration': 24, 'assessment': 'Public metrics support further diligence.'},
+            'business': {'model': 'Consumer subscription', 'market': 'North America', 'strategic_rationale': 'Adjacency', 'open_questions': ['Retention']},
+            'cultural': {'acquirer_entities': [{'name': 'A'}], 'target_entities': [{'name': 'B'}], 'shared': ['Design'], 'distinct': ['Outdoor'], 'qloo_metrics': {}},
+            'qloo_evidence': {},
+            'report': {'executive_summary': 'Executive summary.', 'disclaimer': 'Validate material findings.'},
+        }
 
+
+class CoreTests(unittest.TestCase):
     def test_financial_requires_evidence(self):
         result = asyncio.run(ArcAgent().calculate_financial_fit({'metrics': {'ebitda_margin': 0.22}}))
         self.assertIsNone(result['financial_fit'])
@@ -37,11 +47,26 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(parsed['metrics']['ebitda_margin'], 0.22)
         self.assertEqual(parsed['metrics']['net_debt_to_ebitda'], 1.8)
 
-    def test_persistence(self):
-        aid = create_analysis('A', 'B', 'Test', ['financial'])
-        loaded = get_analysis(aid)
-        self.assertEqual(loaded['acquirer'], 'A')
-        self.assertIsNone(loaded['overview']['strategic_fit'])
+    def test_analysis_payload_is_created_without_a_database(self):
+        analysis = create_analysis('A', 'B', 'Test', ['financial'])
+        self.assertRegex(analysis['analysis_id'], r'^analysis-[a-f0-9]+$')
+        self.assertEqual(analysis['acquirer'], 'A')
+        self.assertIsNone(analysis['overview']['strategic_fit'])
+
+    def test_investigation_transforms_payload_without_persisting(self):
+        from app.services import analysis_service
+        previous = analysis_service._AGENT
+        analysis_service._AGENT = StubAgent()
+        try:
+            analysis = create_analysis('A', 'B', 'Test', ['financial', 'business'])
+            result = asyncio.run(run_investigation(analysis))
+            self.assertEqual(result['status'], 'Investigation complete')
+            self.assertEqual(result['overview']['cultural_alignment'], 79)
+            self.assertEqual(result['overview']['audience_expansion'], 88)
+            self.assertEqual(result['overview']['integration_risk'], 'Moderate')
+            self.assertEqual(result['report']['executive_summary'], 'Executive summary.')
+        finally:
+            analysis_service._AGENT = previous
 
 
 if __name__ == '__main__':

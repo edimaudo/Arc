@@ -1,11 +1,9 @@
 """Regression tests to ensure the corrected Arc UX ships with demo auth."""
 import os
-import tempfile
 from pathlib import Path
 
 os.environ.setdefault('GEMINI_API_KEY', 'test-key')
 os.environ.setdefault('QLOO_API_KEY', 'test-key')
-os.environ['ARC_DB_PATH'] = str(Path(tempfile.gettempdir()) / 'arc_ux_auth_merge_test.sqlite3')
 
 from fastapi.testclient import TestClient
 from app.main import app

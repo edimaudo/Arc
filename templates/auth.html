@@ -1,0 +1,15 @@
+{% extends "public_base.html" %}
+{% block title %}Sign in — Arc{% endblock %}
+{% block content %}
+<section class="auth wrap"><div class="auth-card">
+  <h1>Sign in to Arc</h1>
+  <p class="muted">Use the shared demo account to enter the Arc workspace.</p>
+  {% if error %}<div class="form-alert" role="alert">{{ error }}</div>{% endif %}
+  <div class="demo-access" role="note" aria-label="Demo account details">
+    <h2>Demo account</h2><p><strong>Email:</strong> <code>{{ demo_email }}</code></p><p><strong>Password:</strong> <code>{{ demo_password }}</code></p>
+    <p class="muted">Use non-confidential demonstration data only. Analyses are saved in this browser, not in a shared server database.</p>
+    <form method="post" action="/demo-login"><input type="hidden" name="next" value="{{ next_url }}"><button class="button primary full" type="submit">Continue with demo account</button></form>
+  </div>
+  <details><summary>Enter credentials manually</summary><form method="post" action="/login"><input type="hidden" name="next" value="{{ next_url }}"><label for="email">Email<input id="email" name="email" type="email" required maxlength="254" autocomplete="email" value="{{ demo_email }}"></label><label for="password">Password<input id="password" name="password" type="password" required minlength="1" maxlength="256" autocomplete="current-password" value="{{ demo_password }}"></label><button class="button secondary full" type="submit">Sign in</button></form></details>
+</div></section>
+{% endblock %}

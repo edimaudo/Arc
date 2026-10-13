@@ -5,38 +5,17 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.config import MAX_TOOL_TURNS
-from app.db import init_db, load_analyses, load_analysis, save_analysis
 from app.services.agent_service import ArcAgent
 
-init_db()
 _AGENT = ArcAgent()
 
 
-def list_analyses(owner_id: str | None = None) -> list[dict[str, Any]]:
-    items = load_analyses()
-    if owner_id is not None:
-        items = [item for item in items if item.get('owner_id') == owner_id]
-    return items
-
-
-def get_analysis(analysis_id: str, owner_id: str | None = None) -> dict[str, Any]:
-    analysis = load_analysis(analysis_id)
-    if not analysis or (owner_id is not None and analysis.get('owner_id') != owner_id):
-        raise KeyError(analysis_id)
-    return analysis
-
-
-def get_latest_analysis(owner_id: str | None = None) -> dict[str, Any] | None:
-    items = list_analyses(owner_id=owner_id)
-    return items[0] if items else None
-
-
-def create_analysis(acquirer: str, target: str, objective: str, scopes: list[str], owner_id: str | None = None) -> str:
-    analysis_id = f'analysis-{uuid.uuid4().hex[:10]}'
+def create_analysis(acquirer: str, target: str, objective: str, scopes: list[str], owner_id: str | None = None) -> dict[str, Any]:
+    """Create an analysis payload. The browser persists it in IndexedDB."""
     now = datetime.now(timezone.utc).isoformat()
-    base = {
-        'analysis_id': analysis_id,
-        'owner_id': owner_id,
+    return {
+        'analysis_id': f'analysis-{uuid.uuid4().hex[:10]}',
+        'owner_id': owner_id or 'arc-demo-user',
         'acquirer': acquirer,
         'target': target,
         'status': 'Ready to investigate',
@@ -65,14 +44,16 @@ def create_analysis(acquirer: str, target: str, objective: str, scopes: list[str
         'created_at': now,
         'updated_at': now,
     }
-    save_analysis(base)
-    return analysis_id
 
 
-async def run_investigation(analysis_id: str, owner_id: str | None = None) -> dict[str, Any]:
-    analysis = get_analysis(analysis_id, owner_id=owner_id)
+async def run_investigation(source: dict[str, Any]) -> dict[str, Any]:
+    """Run against a client-supplied analysis. No server-side persistence is used."""
+    analysis = dict(source)
+    analysis_id = str(analysis.get('analysis_id') or '')
+    if not analysis_id or not str(analysis.get('acquirer') or '').strip() or not str(analysis.get('target') or '').strip():
+        raise ValueError('The saved analysis is missing its ID, acquirer, or target. Reopen it from this browser and try again.')
     analysis['status'] = 'Investigation in progress'
-    save_analysis(analysis)
+    analysis['updated_at'] = datetime.now(timezone.utc).isoformat()
     goal = {
         'acquirer': analysis['acquirer'],
         'target': analysis['target'],
@@ -80,32 +61,27 @@ async def run_investigation(analysis_id: str, owner_id: str | None = None) -> di
         'scopes': analysis.get('scopes', ['financial', 'business', 'cultural', 'integration']),
         'documents': analysis.get('documents', []),
     }
-    try:
-        result = await _AGENT.run(goal, max_turns=MAX_TOOL_TURNS)
-    except Exception as exc:
-        analysis['status'] = 'Investigation failed'
-        analysis['error'] = str(exc)
-        save_analysis(analysis)
-        raise
+    result = await _AGENT.run(goal, max_turns=MAX_TOOL_TURNS)
 
     analysis['status'] = 'Investigation complete'
     analysis['completed_at'] = datetime.now(timezone.utc).isoformat()
+    analysis['updated_at'] = analysis['completed_at']
     analysis['activity'] = result.get('activity', [])
     analysis['agent_output'] = result.get('output', '')
     analysis['findings'] = result.get('findings', analysis.get('findings', []))
     analysis['risks'] = {'items': result.get('risks', analysis.get('risks', {}).get('items', []))}
     analysis['opportunities'] = result.get('opportunities', analysis.get('opportunities', []))
     analysis['diligence_questions'] = result.get('diligence_questions', analysis.get('diligence_questions', []))
-    
+
     scores = result.get('scores', {}) or {}
     score_map = {
         'strategic_fit': scores.get('strategic_fit'),
         'cultural_alignment': scores.get('cultural_alignment', scores.get('cultural_fit')),
         'audience_expansion': scores.get('audience_expansion'),
         'financial_fit': scores.get('financial_fit'),
-        'integration_risk': scores.get('integration_risk', analysis['overview'].get('integration_risk')),
+        'integration_risk': scores.get('integration_risk', analysis.get('overview', {}).get('integration_risk', 'Pending')),
     }
-    analysis['overview'].update({k: v for k, v in score_map.items() if v is not None})
+    analysis.setdefault('overview', {}).update({k: v for k, v in score_map.items() if v is not None})
     analysis['report'] = result.get('report') or {
         'executive_summary': result.get('summary') or result.get('output', ''),
         'deal_fit': {k: v for k, v in score_map.items() if v is not None},
@@ -116,7 +92,6 @@ async def run_investigation(analysis_id: str, owner_id: str | None = None) -> di
     }
     analysis['financial'] = result.get('financial', {})
     analysis['business'] = result.get('business', {})
-    analysis['cultural'] = result.get('cultural', analysis['cultural'])
+    analysis['cultural'] = result.get('cultural', analysis.get('cultural', {}))
     analysis['qloo_evidence'] = result.get('qloo_evidence', {})
-    save_analysis(analysis)
     return analysis

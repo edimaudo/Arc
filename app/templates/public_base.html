@@ -19,7 +19,6 @@
       <a class="sign-in-link" href="/dashboard">Open workspace</a>
     {% else %}
       <a class="sign-in-link" href="/login">Sign in</a>
-      <a class="sign-in-link" href="/signup">Create account</a>
     {% endif %}
       <div class="header-tools" aria-label="Display settings">
         <button class="text-btn" type="button" data-font="0.9" aria-label="Small text">A−</button>
@@ -30,6 +29,7 @@
     </div>
   </header>
   <main id="main">{% block content %}{% endblock %}</main>
+  <script src="/static/js/arc-store.js"></script>
   <script src="/static/js/app.js"></script>
   {% block scripts %}{% endblock %}
 </body>

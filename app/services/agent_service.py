@@ -92,7 +92,7 @@ class ArcAgent:
             },
             {
                 "type": "function", "name": "find_potential_targets",
-                "description": "Run a grounded market search for companies that could plausibly fit an acquisition thesis. Return real companies only; candidates are then screened separately.",
+                "description": "Run a grounded market search for companies that match sector, geography, and stated business criteria. Return real companies only.",
                 "parameters": {"type": "object", "properties": {
                     "acquirer": {"type": "string"}, "sector": {"type": "string"}, "geography": {"type": "string"}, "thesis": {"type": "string"}
                 }, "required": ["acquirer", "sector", "geography", "thesis"]},
@@ -273,13 +273,82 @@ class ArcAgent:
         self._company_research_cache[cache_key] = dict(result)
         return result
 
+    async def research_business_insights(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Research a business as an operating company, independent of an M&A assignment."""
+        company = str(args.get("company") or "").strip()
+        sector = str(args.get("sector") or "").strip()
+        geography = str(args.get("geography") or "Canada").strip() or "Canada"
+        focus = str(args.get("focus") or "Overall business").strip() or "Overall business"
+        prompt = (
+            "Produce practical, current BUSINESS INSIGHTS about the named company and/or industry. "
+            "This is ordinary business research, not M&A analysis: do not discuss acquisitions, deal fit, integration, buyers, sellers, or transaction rationale. "
+            "Use Google Search grounding and return JSON only with keys: company, sector, geography, business_overview, business_model, "
+            "market_position, current_trends, competitive_landscape, customer_and_product_signals, growth_opportunities, "
+            "business_risks, recommended_actions, key_metrics_to_watch, sources. "
+            "current_trends, customer_and_product_signals, growth_opportunities, business_risks, recommended_actions, and key_metrics_to_watch "
+            "must be concise arrays; arrays of findings should use objects with title and detail, and recommendations should include action and reason. "
+            "competitive_landscape should be an array of objects with name, summary, and website where known. "
+            "sources must be a list of objects containing title and url. Ground factual claims in public sources, include useful sources, "
+            "separate facts from interpretation, and never invent revenue, market share, financial metrics, URLs, or sources. "
+            "For unavailable information, state that it is not publicly disclosed rather than guessing. Prioritize actionable observations over generic advice.\n"
+            f"COMPANY: {company or 'Not specified'}\nSECTOR: {sector or 'Infer from company if supported'}\n"
+            f"GEOGRAPHY: {geography}\nFOCUS: {focus}"
+        )
+        search = await self._web_search_json(prompt)
+        insights = search["data"]
+        insights.setdefault("company", company or "Industry overview")
+        insights.setdefault("sector", sector)
+        insights.setdefault("geography", geography)
+        return {"insights": insights, "search_activity": search["steps"]}
+
+    async def find_comparable_companies(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Find companies of comparable business scale, without requiring an M&A analysis."""
+        reference = str(args.get("reference_company") or "").strip()
+        sector = str(args.get("sector") or "").strip()
+        geography = str(args.get("geography") or "Canada").strip() or "Canada"
+        metric = str(args.get("size_metric") or "revenue").strip()
+        band = str(args.get("size_band") or "Any size").strip() or "Any size"
+        metric_labels = {"revenue": "annual revenue", "valuation": "estimated company valuation or enterprise value", "employees": "employee count"}
+        metric_label = metric_labels.get(metric, "annual revenue")
+        prompt = (
+            "Find 6-10 real operating companies that are comparable in BUSINESS SCALE and industry. This is independent company discovery, "
+            "not an acquisition-target search: do not rank acquisition fit, recommend an acquisition, or use strategic/cultural fit scores. "
+            "Use current Google Search grounding. Prefer comparable private or public companies in the requested geography. "
+            "Return JSON only with keys reference_company, sector, geography, comparables. Each comparable must contain name, sector, geography, "
+            "website, annual_revenue_estimate, company_valuation_estimate, employee_count_estimate, business_summary, comparability_reason, "
+            "and sources (a list of title/url objects). Each estimate must include its currency/units and period when known; use null or 'Not publicly disclosed' "
+            "when no reliable public figure exists. Never fabricate financial estimates or URLs. Explain why each business is comparable based on actual "
+            "size/scale and industry, not potential deal logic. Prefer official company sources, filings, credible financial press, or reputable databases. "
+            "Requested comparison metric: " + metric_label + ". Requested size band: " + band + ". Return the strongest supported matches first.\n"
+            f"REFERENCE COMPANY (optional): {reference or 'None provided'}\nINDUSTRY: {sector}\nGEOGRAPHY: {geography}\n"
+            "If a reference company is supplied, use it to understand the business category and approximate scale, but do not include it as one of the comparables. "
+            "If it is not supplied, use industry, geography, and size criteria to discover comparable companies."
+        )
+        search = await self._web_search_json(prompt)
+        values = search["data"].get("comparables", [])
+        if not isinstance(values, list):
+            values = []
+        cleaned = []
+        ref_normalized = reference.casefold()
+        for item in values:
+            if not isinstance(item, dict):
+                continue
+            if reference and str(item.get("name") or "").casefold() == ref_normalized:
+                continue
+            cleaned.append(item)
+        return {
+            "criteria": {"reference_company": reference, "sector": sector, "geography": geography, "size_metric": metric, "size_band": band},
+            "comparables": cleaned[:10],
+            "search_activity": search["steps"],
+        }
+
     async def find_potential_targets(self, args: dict[str, Any]) -> dict[str, Any]:
         prompt = (
-            "Identify 6-8 real, currently operating companies that could plausibly be acquisition targets for the stated acquirer. "
+            "Identify 6-8 real, currently operating companies that could plausibly match the stated business criteria. "
             "Use Google Search grounding. Prefer candidates with a verifiable public footprint and enough public financial information to screen. "
             "Return JSON only: {candidates:[{name, sector, geography, rationale, website, public_or_private, financial_data_available}]}. "
             "Do not invent companies, facts or URLs.\n"
-            f"ACQUIRER: {args['acquirer']}\nSECTOR: {args['sector']}\nGEOGRAPHY: {args['geography']}\nTHESIS: {args['thesis']}"
+            f"ACQUIRER: {args['acquirer']}\nSECTOR: {args['sector']}\nGEOGRAPHY: {args['geography']}\nBUSINESS CRITERIA: {args.get('business_criteria', args.get('thesis', ''))}"
         )
         search = await self._web_search_json(prompt)
         return {"acquirer": args["acquirer"], "criteria": args, "candidates": search["data"].get("candidates", []), "search_activity": search["steps"]}
@@ -348,14 +417,14 @@ class ArcAgent:
         research = await self.search_company_information({
             "company": target_name,
             "questions": [
-                f"How does this company fit the acquisition thesis: {thesis}?",
+                f"How does this company fit the stated business criteria: {thesis}?",
                 "What are the company's brands, products and audience?",
                 "What financial metrics are publicly disclosed?",
             ],
         })
         acq_research = await self.search_company_information({
             "company": acquirer,
-            "questions": ["What are the company's major brands, products and audience?", "What strategic adjacency should an acquisition target provide?"],
+            "questions": ["What are the company's major brands, products and audience?", "What products, services, or customer segments could complement the company's current business?"],
         })
         a_queries = [acquirer] + [str(x) for x in (acq_research.get("brands") or [])[:3]]
         t_queries = [target_name] + [str(x) for x in (research.get("brands") or [])[:4]]
@@ -401,7 +470,7 @@ class ArcAgent:
         prompt = (
             "Return JSON only: {strategic_fit: number, rationale: string}. Score 0-100 for strategic acquisition fit based strictly on the supplied evidence. "
             "Do not invent facts. Consider product adjacency, customer overlap/complementarity, geography, competitive position and thesis fit.\n"
-            f"ACQUIRER: {acquirer}\nTARGET: {target}\nTHESIS: {thesis}\nACQUIRER EVIDENCE:\n{json.dumps(acq, ensure_ascii=False)[:16000]}\nTARGET EVIDENCE:\n{json.dumps(tgt, ensure_ascii=False)[:16000]}"
+            f"ACQUIRER: {acquirer}\nTARGET: {target}\nBUSINESS CRITERIA: {thesis}\nACQUIRER EVIDENCE:\n{json.dumps(acq, ensure_ascii=False)[:16000]}\nTARGET EVIDENCE:\n{json.dumps(tgt, ensure_ascii=False)[:16000]}"
         )
         result = await self._post_interaction({"model": self.model, "input": prompt, "response_format": {"type": "text", "mime_type": "application/json", "schema": {"type": "object", "properties": {"strategic_fit": {"type": "number"}, "rationale": {"type": "string"}}, "required": ["strategic_fit", "rationale"]}}})
         parsed = self._parse_json_object(result.get("output_text") or self._extract_output_text(result)) or {}

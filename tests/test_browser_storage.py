@@ -22,6 +22,8 @@ class BrowserStorageArchitectureTests(unittest.TestCase):
         self.assertIn("indexedDB.open(DB_NAME, DB_VERSION)", source)
         self.assertIn("createObjectStore('analyses'", source)
         self.assertIn("createObjectStore('discoveries'", source)
+        self.assertIn("createObjectStore('insights'", source)
+        self.assertIn('allInsights:', source)
         self.assertTrue(app_path.exists())
 
     def test_app_imports_on_vercel_without_any_database_path(self):

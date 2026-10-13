@@ -451,3 +451,53 @@ input, select, textarea { border-radius: 3px; min-height: 46px; }
 .demo-access p { margin: .3rem 0; }
 .demo-access code { font-size: .92em; overflow-wrap: anywhere; }
 .demo-access form { margin-top: .85rem; }
+
+/* Business research and independent comparable-company discovery */
+.business-research-panel { margin-bottom: 26px; }
+.business-results { display: grid; gap: 18px; margin-bottom: 80px; }
+.business-report-head { display: flex; justify-content: space-between; align-items: end; gap: 20px; padding: 10px 0 6px; }
+.business-report-head h2 { font-size: 1.55rem; margin-bottom: 4px; }
+.insight-panel h2 { margin-bottom: 18px; }
+.insight-panel > p + p { margin-top: 12px; }
+.insight-list { display: grid; }
+.insight-list article { border-top: 1px solid var(--line); padding: 16px 0; }
+.insight-list article:first-child { padding-top: 0; border-top: 0; }
+.insight-list article:last-child { padding-bottom: 0; }
+.insight-list p { margin: 5px 0 0; color: var(--muted); }
+.insight-list .text-link { display: inline-block; margin-top: 8px; }
+.source-list { margin: 0; padding-left: 20px; }
+.source-list li + li { margin-top: 10px; }
+.report-timestamp { font-size: .82rem; }
+.discovery-command form { gap: 20px; }
+.discovery-command .discovery-actions { margin-top: 2px; }
+.discovery-help { max-width: 620px; }
+.comparable-card .candidate-top { align-items: center; }
+.comparable-card .candidate-top .text-link { flex: 0 0 auto; }
+.comparable-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 18px 0; padding: 14px 0; }
+.comparable-facts div { display: grid; gap: 5px; min-width: 0; }
+.comparable-facts span { font-size: .78rem; color: var(--muted); }
+.comparable-facts strong { font-size: 1rem; overflow-wrap: anywhere; }
+.comparable-reason { margin-bottom: 18px; }
+.comparable-reason p { color: var(--muted); margin: 5px 0 0; }
+.source-links { display: flex; flex-wrap: wrap; gap: 8px 18px; border-top: 1px solid var(--line); padding-top: 13px; font-size: .82rem; }
+.source-links strong { color: var(--muted); font-weight: 500; }
+.source-links a { max-width: 100%; overflow-wrap: anywhere; }
+.tour-launch { white-space: nowrap; }
+.tour-panel { padding: 26px; }
+.tour-panel h2 { font-size: 1.65rem; line-height: 1.2; margin: 22px 0 12px; }
+.tour-panel > p { min-height: 96px; max-width: 56ch; color: var(--muted); }
+.tour-progress { color: var(--muted); font-size: .82rem; }
+.tour-progress-track { height: 3px; background: var(--soft); overflow: hidden; }
+.tour-progress-track span { display: block; height: 100%; background: var(--accent); transition: width .15s ease; }
+.tour-controls { display: flex; justify-content: space-between; gap: 14px; align-items: center; margin-top: 20px; }
+.tour-controls .hero-actions { flex-wrap: nowrap; }
+.tour-controls .button { white-space: nowrap; }
+#arc-tour { max-width: 100%; }
+#arc-tour::backdrop { background: rgba(10,12,10,.56); backdrop-filter: blur(2px); }
+@media (max-width: 760px) {
+  .comparable-facts { grid-template-columns: 1fr; }
+  .business-report-head { align-items: flex-start; flex-direction: column; }
+  .tour-controls { align-items: stretch; flex-direction: column-reverse; }
+  .tour-controls > .button { align-self: flex-start; }
+  .tour-controls .hero-actions { justify-content: flex-end; }
+}

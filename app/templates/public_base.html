@@ -15,6 +15,7 @@
   <header class="site-header public-header">
     <a class="wordmark" href="/" aria-label="Arc home">ARC</a>
     <div class="public-header-actions">
+      <button class="text-btn tour-launch" type="button" data-tour-open>App tour</button>
       {% if request.session.get('user_id') %}
       <a class="sign-in-link" href="/dashboard">Open workspace</a>
     {% else %}
@@ -29,8 +30,10 @@
     </div>
   </header>
   <main id="main">{% block content %}{% endblock %}</main>
+  {% include "tour_dialog.html" %}
   <script src="/static/js/arc-store.js"></script>
   <script src="/static/js/app.js"></script>
+  <script src="/static/js/tour.js"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

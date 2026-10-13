@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.auth import DEMO_EMAIL, DEMO_PASSWORD, authenticate_user
 from app.services import analysis_service
-from app.routers import analyses, discovery
+from app.routers import analyses, discovery, dashboard
 
 
 class StubAgent:
@@ -34,19 +34,34 @@ class StubAgent:
 
 
 class DiscoveryStub:
-    async def find_potential_targets(self, args):
-        return {'candidates': [{'name': 'Target One', 'sector': args['sector'], 'geography': args['geography'], 'rationale': 'Adjacent', 'website': 'https://example.com', 'public_or_private': 'Public'}], 'search_activity': []}
+    async def find_comparable_companies(self, args):
+        return {'comparables': [{'name': 'Peer One', 'sector': args['sector'], 'geography': args['geography'],
+                                 'annual_revenue_estimate': '$25 million (FY2025)',
+                                 'company_valuation_estimate': 'Not publicly disclosed',
+                                 'employee_count_estimate': '120-150',
+                                 'business_summary': 'A mid-sized consumer business.',
+                                 'comparability_reason': 'Similar sector and scale.',
+                                 'sources': [{'title': 'Company website', 'url': 'https://example.com'}]}], 'search_activity': []}
 
-    async def screen_target(self, acquirer, candidate, thesis):
-        return {**candidate, 'strategic_fit': 80, 'cultural_fit': 90, 'audience_expansion': 70, 'financial_fit': 60,
-                'scores': {'strategic_fit': 80, 'cultural_fit': 90, 'audience_expansion': 70, 'financial_fit': 60},
-                'overall_fit': 77, 'score_status': 'complete'}
+
+class BusinessInsightsStub:
+    async def research_business_insights(self, args):
+        return {'insights': {'company': args['company'] or 'Industry overview', 'sector': args['sector'],
+                            'business_overview': 'A public company operating overview.',
+                            'current_trends': [{'title': 'Demand shift', 'detail': 'Customers are shifting to online channels.'}],
+                            'competitive_landscape': [{'name': 'Peer Co', 'summary': 'A competitor in the same category.'}],
+                            'growth_opportunities': [{'title': 'Expand online', 'detail': 'Improve digital distribution.'}],
+                            'business_risks': [{'title': 'Margin pressure', 'detail': 'Input cost changes may pressure margins.'}],
+                            'recommended_actions': [{'title': 'Track margins', 'action': 'Review unit economics monthly.', 'reason': 'Catch cost changes early.'}],
+                            'key_metrics_to_watch': ['Gross margin'],
+                            'sources': [{'title': 'Public source', 'url': 'https://example.com'}]}, 'search_activity': []}
 
 
 class IntegrationTests(unittest.TestCase):
     def setUp(self):
         self.prev_agent = analysis_service._AGENT
         self.prev_route_agent = analyses._agent
+        self.prev_dashboard_agent = dashboard._agent
         analysis_service._AGENT = StubAgent()
         analyses._agent = StubAgent()
         self.client = TestClient(app, follow_redirects=False)
@@ -57,6 +72,7 @@ class IntegrationTests(unittest.TestCase):
     def tearDown(self):
         analysis_service._AGENT = self.prev_agent
         analyses._agent = self.prev_route_agent
+        dashboard._agent = self.prev_dashboard_agent
 
     def test_demo_user_authenticates_without_account_storage(self):
         self.assertIsNotNone(authenticate_user(DEMO_EMAIL, DEMO_PASSWORD))
@@ -64,17 +80,50 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(self.client.get('/dashboard').status_code, 200)
         self.assertEqual(self.client.get('/health').json()['storage'], 'browser IndexedDB; no server database')
 
-    def test_discovery_contract(self):
+    def test_discovery_returns_comparable_companies_not_acquisition_scores(self):
         original = discovery._agent
         discovery._agent = DiscoveryStub()
         try:
-            response = self.client.get('/discovery/api/candidates?acquirer=Acquirer&sector=Consumer&geography=Canada&thesis=Adjacency')
+            response = self.client.post('/discovery/api/comparables', json={
+                'reference_company': 'Example Co', 'sector': 'Consumer', 'geography': 'Canada',
+                'size_metric': 'revenue', 'size_band': '$10 million–$50 million',
+            })
             self.assertEqual(response.status_code, 200)
             payload = response.json()
-            self.assertEqual(payload['candidates'][0]['overall_fit'], 77)
-            self.assertEqual(payload['candidates'][0]['components']['cultural_fit'], 90)
+            peer = payload['comparables'][0]
+            self.assertEqual(peer['name'], 'Peer One')
+            self.assertEqual(peer['annual_revenue_estimate'], '$25 million (FY2025)')
+            self.assertNotIn('overall_fit', peer)
+            self.assertNotIn('strategic_fit', peer)
         finally:
             discovery._agent = original
+
+    def test_business_insights_is_independent_company_research(self):
+        original = dashboard._agent
+        dashboard._agent = BusinessInsightsStub()
+        try:
+            response = self.client.post('/owner/api/insights', json={
+                'company': 'Example Co', 'sector': 'Retail', 'geography': 'Canada', 'focus': 'Market and competitors'
+            })
+            self.assertEqual(response.status_code, 200)
+            report = response.json()['insights']
+            self.assertEqual(report['company'], 'Example Co')
+            self.assertIn('business_overview', report)
+            self.assertIn('competitive_landscape', report)
+            self.assertIn('growth_opportunities', report)
+            self.assertNotIn('strategic_fit', report)
+        finally:
+            dashboard._agent = original
+
+    def test_blank_upload_is_optional_and_does_not_trigger_unknown_file_type(self):
+        response = self.client.post('/analysis/start', data={
+            'acquirer': 'Acquirer Ltd', 'target': 'Target Ltd', 'objective': 'Full acquisition investigation',
+            'scopes': ['financial', 'business'],
+        }, files={'evidence': ('', b'', 'application/octet-stream')})
+        self.assertEqual(response.status_code, 200, response.text)
+        analysis = response.json()['analysis']
+        self.assertEqual(analysis['documents'], [])
+        self.assertEqual(analysis['upload_errors'], [])
 
     def test_analysis_flow_is_stateless_from_the_server(self):
         created = self.client.post('/analysis/start', data={
@@ -126,7 +175,7 @@ class IntegrationTests(unittest.TestCase):
             response = client.get(route)
             self.assertEqual(response.status_code, 303)
             self.assertIn('/login?next=', response.headers.get('location', ''))
-        response = client.get('/discovery/api/candidates?acquirer=A&sector=Retail')
+        response = client.post('/discovery/api/comparables', json={'sector': 'Retail'})
         self.assertEqual(response.status_code, 401)
 
     def test_single_demo_account_not_signup(self):

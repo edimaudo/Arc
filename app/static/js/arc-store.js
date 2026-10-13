@@ -1,14 +1,14 @@
-/* Arc browser storage. Analyses and discovery results stay in this browser's IndexedDB. */
+/* Arc browser-local persistence for analyses, discovery results, insights, and preferences. */
 (() => {
   const DB_NAME = 'arc-workspace';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   let connection;
 
   function open() {
     if (connection) return connection;
     connection = new Promise((resolve, reject) => {
       if (!('indexedDB' in window)) {
-        reject(new Error('This browser does not support IndexedDB. Use a current version of Chrome, Firefox, Safari, or Edge.'));
+        reject(new Error('Browser saving is unavailable. Try a current version of Chrome, Firefox, Safari, or Edge.'));
         return;
       }
       const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -17,6 +17,7 @@
         if (!db.objectStoreNames.contains('analyses')) db.createObjectStore('analyses', { keyPath: 'analysis_id' });
         if (!db.objectStoreNames.contains('discoveries')) db.createObjectStore('discoveries', { keyPath: 'id' });
         if (!db.objectStoreNames.contains('preferences')) db.createObjectStore('preferences', { keyPath: 'key' });
+        if (!db.objectStoreNames.contains('insights')) db.createObjectStore('insights', { keyPath: 'id' });
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error || new Error('Could not open browser storage.'));
@@ -44,6 +45,8 @@
     allAnalyses: async () => (await request('analyses', 'readonly', s => s.getAll())).sort((a, b) => (b.updated_at || b.created_at || '').localeCompare(a.updated_at || a.created_at || '')),
     putDiscovery: discovery => request('discoveries', 'readwrite', s => s.put(discovery)),
     allDiscoveries: async () => (await request('discoveries', 'readonly', s => s.getAll())).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
+    putInsight: insight => request('insights', 'readwrite', s => s.put(insight)),
+    allInsights: async () => (await request('insights', 'readonly', s => s.getAll())).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
     getPreference: async key => { const row = await request('preferences', 'readonly', s => s.get(key)); return row ? row.value : undefined; },
     setPreference: row => request('preferences', 'readwrite', s => s.put(row)),
   };

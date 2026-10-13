@@ -1,8 +1,60 @@
 {% extends "base.html" %}
-{% block title %}Executive Insights — Arc{% endblock %}
+{% block title %}Business Insights — Arc{% endblock %}
 {% block content %}
-<div class="wrap"><section class="page-head"><div><h1>Executive Insights</h1><p class="muted" id="owner-subtitle">Business view based on your latest saved analysis.</p></div><a class="button secondary" href="/discovery">Discovery</a></section><div id="owner-workspace"><section class="panel empty-state"><h2>Loading saved insights…</h2><p class="muted">Reading your browser's IndexedDB storage.</p></section></div></div>
+<section class="wrap page-head"><div><h1>Business Insights</h1><p class="muted">Research a company or industry to understand its business model, market, competition, growth opportunities, and operating risks.</p></div></section>
+<section class="wrap panel business-research-panel">
+  <form id="business-insights-form">
+    <div class="two-col"><label>Company<input id="insight-company" placeholder="Company name" autocomplete="organization"></label><label>Industry (optional)<input id="insight-sector" placeholder="e.g. Retail, software, financial services"></label></div>
+    <div class="two-col"><label>Geography<input id="insight-geography" value="Canada" placeholder="Country or region"></label><label>Focus<select id="insight-focus"><option>Overall business</option><option>Market and competitors</option><option>Customers and products</option><option>Growth opportunities</option><option>Operations and business risks</option></select></label></div>
+    <p class="muted">Enter a company, an industry, or both. Arc will use public sources and identify figures that are not available rather than estimate them.</p>
+    <div><button class="button primary" id="run-business-insights" type="submit">Research business</button></div>
+  </form>
+</section>
+<section class="wrap business-results" id="business-insights-results" aria-live="polite"><div class="empty-state"><h2>Business research will appear here</h2><p class="muted">Insights are based on publicly available information, with source links where available. Missing financial or market figures will be identified rather than guessed.</p></div></section>
 {% endblock %}
 {% block scripts %}<script>
-(async()=>{const root=document.getElementById('owner-workspace');const subtitle=document.getElementById('owner-subtitle');const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));try{const list=await ArcStore.allAnalyses();const a=list[0];if(!a){root.innerHTML='<section class="panel empty-state"><h2>No acquisition analysis yet</h2><p class="muted">Create an investigation first. The executive view will populate from analysis results saved in this browser.</p><a class="button primary" href="/analysis/new">Start M&amp;A analysis</a></section>';return;}subtitle.textContent=`Business view: ${a.acquirer} × ${a.target}`;const metric=(l,v)=>`<div class="metric-card"><span>${l}</span><strong>${esc(v??'—')}</strong>${v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?`<div class="bar"><i style="width:${Math.max(0,Math.min(100,Number(v)))}%"></i></div>`:''}</div>`;const findings=Array.isArray(a.findings)?a.findings:[];root.innerHTML=`<section class="metric-grid">${metric('Strategic fit',a.overview?.strategic_fit)}${metric('Cultural alignment',a.overview?.cultural_alignment)}${metric('Audience expansion',a.overview?.audience_expansion)}${metric('Financial fit',a.overview?.financial_fit)}</section><section class="content-grid"><div class="panel span-2"><div class="panel-head"><h2>What matters</h2><span class="status">${esc(a.overview?.integration_risk??'Pending')} integration risk</span></div>${findings.length?`<div class="finding-list">${findings.slice(0,5).map((f,i)=>`<div><span>${String(i+1).padStart(2,'0')}</span><h3>${esc(f.title||'Finding')}</h3><p>${esc(f.body||f.rationale||'')}</p></div>`).join('')}</div>`:'<div class="empty-state"><h3>Investigation not yet complete</h3><p class="muted">Run the analysis to surface executive findings.</p></div>'}<a class="button secondary" href="/analysis/${encodeURIComponent(a.analysis_id)}">Open M&amp;A analysis</a></div><div class="panel"><div class="panel-head"><h2>Potential acquisitions</h2></div><p class="muted">Discover and score candidate companies against your acquisition thesis.</p><a class="button primary full" href="/discovery">Open Discovery</a></div></section>`;}catch(e){root.innerHTML=`<section class="panel empty-state"><h2>Browser storage unavailable</h2><p class="muted">${esc(e.message)}</p></section>`;}})();
+(() => {
+  const form = document.getElementById('business-insights-form');
+  const button = document.getElementById('run-business-insights');
+  const root = document.getElementById('business-insights-results');
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const array = v => Array.isArray(v) ? v : [];
+  function textItem(item) { return typeof item === 'string' ? item : (item?.detail || item?.summary || item?.reason || item?.description || item?.action || ''); }
+  function listPanel(title, values) {
+    if (!values.length) return '';
+    return `<section class="panel insight-panel"><h2>${title}</h2><div class="insight-list">${values.map(v => typeof v === 'string' ? `<p>${esc(v)}</p>` : `<article><h3>${esc(v.title || v.name || v.priority || v.action || v.metric || '')}</h3><p>${esc(textItem(v))}</p>${v.reason ? `<p class="muted">${esc(v.reason)}</p>` : ''}${v.website && /^https?:\/\//i.test(v.website) ? `<a class="text-link" href="${esc(v.website)}" target="_blank" rel="noopener noreferrer">Website ↗</a>` : ''}</article>`).join('')}</div></section>`;
+  }
+  function sourcePanel(sources) {
+    const links = array(sources).filter(s => typeof s?.url === 'string' && /^https?:\/\//i.test(s.url)).slice(0,12);
+    return links.length ? `<section class="panel insight-panel"><h2>Sources</h2><ul class="source-list">${links.map(s => `<li><a class="text-link" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)} ↗</a></li>`).join('')}</ul></section>` : '';
+  }
+  function render(report, criteria, savedAt) {
+    const competitors = array(report.competitive_landscape);
+    const overview = report.business_overview || report.summary || '';
+    root.innerHTML = `<div class="business-report-head"><div><h2>${esc(report.company || criteria.company || criteria.sector || 'Business overview')}</h2><p class="muted">${esc(report.sector || criteria.sector || 'Industry research')}${(report.geography || criteria.geography) ? ' · ' + esc(report.geography || criteria.geography) : ''}</p></div><span class="status">Research report</span></div>${overview ? `<section class="panel insight-panel"><h2>Business overview</h2><p>${esc(overview)}</p>${report.business_model ? `<p><strong>Business model:</strong> ${esc(report.business_model)}</p>` : ''}${report.market_position ? `<p><strong>Market position:</strong> ${esc(report.market_position)}</p>` : ''}</section>` : ''}${listPanel('Market trends', array(report.current_trends))}${competitors.length ? `<section class="panel insight-panel"><h2>Competitive landscape</h2><div class="insight-list">${competitors.map(c => `<article><h3>${esc(c.name || 'Competitor')}</h3><p>${esc(c.summary || c.detail || '')}</p>${c.website && /^https?:\/\//i.test(c.website) ? `<a class="text-link" href="${esc(c.website)}" target="_blank" rel="noopener noreferrer">Website ↗</a>` : ''}</article>`).join('')}</div></section>` : ''}${listPanel('Customer and product signals', array(report.customer_and_product_signals))}${listPanel('Growth opportunities', array(report.growth_opportunities))}${listPanel('Business risks', array(report.business_risks))}${listPanel('Recommended actions', array(report.recommended_actions))}${listPanel('Metrics to monitor', array(report.key_metrics_to_watch))}${sourcePanel(report.sources)}<p class="muted report-timestamp">Research completed ${esc(savedAt || '')}. Verify material claims with the linked sources before relying on them.</p>`;
+  }
+  async function restore() {
+    try {
+      const saved = (await ArcStore.allInsights())[0];
+      if (saved) render(saved.insights || {}, saved.criteria || {}, new Date(saved.created_at).toLocaleString());
+    } catch (error) { console.warn('Previous business report could not be restored.'); }
+  }
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const criteria = {company:document.getElementById('insight-company').value.trim(), sector:document.getElementById('insight-sector').value.trim(), geography:document.getElementById('insight-geography').value.trim() || 'Canada', focus:document.getElementById('insight-focus').value};
+    if (!criteria.company && !criteria.sector) { root.innerHTML = '<div class="empty-state"><h2>Add a company or industry</h2><p class="muted">At least one is required to begin research.</p></div>'; return; }
+    button.disabled = true; button.textContent = 'Researching…';
+    root.innerHTML = '<div class="empty-state"><h2>Researching the business</h2><p class="muted">Arc is reviewing public company information and market sources.</p></div>';
+    try {
+      const response = await fetch('/owner/api/insights', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(criteria)});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || data.error || 'Business research failed.');
+      const saved = {id:'insight-' + Date.now(), created_at:new Date().toISOString(), criteria, insights:data.insights || {}};
+      await ArcStore.putInsight(saved);
+      render(saved.insights, criteria, new Date(saved.created_at).toLocaleString());
+    } catch (error) { root.innerHTML = `<div class="empty-state"><h2>Business research could not be completed</h2><p class="muted">${esc(error.message)}</p></div>`; }
+    finally { button.disabled = false; button.textContent = 'Research business'; }
+  });
+  restore();
+})();
 </script>{% endblock %}

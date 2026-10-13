@@ -2,7 +2,7 @@
 {% block title %}M&A Analysis — Arc{% endblock %}
 {% block content %}
 <div id="analysis-workspace" class="wrap" data-analysis-id="{{ analysis_id }}">
-  <section class="page-head"><div><h1 id="analysis-title">Loading saved analysis…</h1><p class="muted" id="analysis-status">Retrieving this browser's saved analysis.</p></div><div class="hero-actions"><button class="button secondary" id="export-report">Export PDF</button><button class="button secondary" id="print-analysis">Print</button><button class="button secondary" id="open-ask">Ask Arc</button><button class="button primary" id="run-investigation">Run investigation</button></div></section>
+  <section class="page-head"><div><h1 id="analysis-title">Loading saved analysis…</h1><p class="muted" id="analysis-status">Loading your investigation.</p></div><div class="hero-actions"><button class="button secondary" id="export-report">Export PDF</button><button class="button secondary" id="print-analysis">Print</button><button class="button secondary" id="open-ask">Ask Arc</button><button class="button primary" id="run-investigation">Run investigation</button></div></section>
   <div id="analysis-alert" class="form-alert" role="alert" hidden></div>
   <div id="analysis-content"></div>
 </div>
@@ -57,13 +57,13 @@
       const data = await ArcStore.getAnalysis(id);
       if (!data) {
         document.getElementById('analysis-title').textContent = 'Analysis not saved in this browser';
-        document.getElementById('analysis-status').textContent = 'Arc stores demo analyses in this browser using IndexedDB.';
+        document.getElementById('analysis-status').textContent = 'This investigation is not available in the current browser.';
         root.innerHTML = '<section class="panel empty-state"><h2>Saved analysis not found</h2><p class="muted">This analysis may have been created in a different browser or after browser storage was cleared.</p><a class="button primary" href="/analysis/new">Start M&A analysis</a></section>';
         runButton.hidden = true; document.getElementById('export-report').hidden = true; document.getElementById('open-ask').hidden = true;
         return;
       }
       render(data);
-    } catch (error) { showError(error.message || 'Could not read the saved analysis from IndexedDB.'); }
+    } catch (error) { showError(error.message || 'Could not load this investigation.'); }
   }
 
   runButton.addEventListener('click', async () => {

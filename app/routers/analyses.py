@@ -1,7 +1,7 @@
 from pathlib import Path
 import logging
 
-from fastapi import APIRouter, File, Form, Request, UploadFile, Depends
+from fastapi import APIRouter, Form, Request, Depends
 from fastapi.responses import JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 
@@ -34,7 +34,6 @@ async def start_analysis(
     target: str = Form(...),
     objective: str = Form(...),
     scopes: list[str] = Form(default=[]),
-    evidence: list[UploadFile] = File(default=[]),
 ):
     acquirer, target, objective = acquirer.strip(), target.strip(), objective.strip()
     if not acquirer or not target:
@@ -46,9 +45,16 @@ async def start_analysis(
         owner_id=request.state.user['user_id'],
     )
     errors = []
-    for upload in evidence[:MAX_DOCUMENTS_PER_ANALYSIS]:
-        filename = upload.filename or 'document'
+    form = await request.form()
+    # Browsers may submit a blank string (not an UploadFile) for an untouched file picker.
+    # Filter form values manually so the empty field cannot fail FastAPI's UploadFile validation.
+    uploads = [item for item in form.getlist('evidence') if getattr(item, 'filename', None)]
+    for upload in uploads[:MAX_DOCUMENTS_PER_ANALYSIS]:
+        filename = str(upload.filename).strip()
         raw = await upload.read()
+        if not raw:
+            await upload.close()
+            continue
         if len(raw) > MAX_DOCUMENT_BYTES:
             errors.append(f'{filename}: file exceeds the {MAX_DOCUMENT_BYTES // 1000000} MB limit.')
             continue

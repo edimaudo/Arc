@@ -54,3 +54,54 @@ def test_protected_analysis_redirects_to_signin_with_return_path():
         response = client.get('/analysis/new')
     assert response.status_code == 303
     assert response.headers['location'].startswith('/login?next=')
+
+
+def test_analysis_document_upload_is_optional_and_no_storage_implementation_leaks_into_ui():
+    with TestClient(app, follow_redirects=False) as client:
+        client.post('/demo-login', data={'next': '/dashboard'})
+        response = client.get('/analysis/new')
+        assert response.status_code == 200
+        assert 'Supporting documents (optional)' in response.text
+        assert 'PDF, XLSX, XLSM, or CSV' in response.text
+        assert 'IndexedDB' not in response.text
+        detail = client.get('/analysis/example')
+        assert 'IndexedDB' not in detail.text
+
+
+def test_discovery_is_standalone_comparable_company_research():
+    with TestClient(app, follow_redirects=False) as client:
+        client.post('/demo-login', data={'next': '/dashboard'})
+        response = client.get('/discovery')
+    assert response.status_code == 200
+    html = response.text
+    assert 'Find comparable companies' in html
+    assert 'Annual revenue' in html
+    assert 'Estimated company valuation' in html
+    assert 'Number of employees' in html
+    assert 'Acquisition thesis' not in html
+    assert 'Start M&amp;A analysis' not in html
+    assert 'Investigate' not in html
+
+
+def test_business_insights_is_company_research_not_mna_summary():
+    with TestClient(app, follow_redirects=False) as client:
+        client.post('/demo-login', data={'next': '/dashboard'})
+        response = client.get('/owner')
+    assert response.status_code == 200
+    html = response.text
+    for expected in ['Business Insights', 'Market trends', 'Research business', 'Growth opportunities', 'Business risks']:
+        assert expected in html
+    assert 'IndexedDB' not in html
+    assert 'Strategic fit' not in html
+    assert 'Acquisition thesis' not in html
+
+
+def test_walkthrough_is_available_in_public_and_signed_in_layouts():
+    with TestClient(app, follow_redirects=False) as client:
+        public = client.get('/')
+        client.post('/demo-login', data={'next': '/dashboard'})
+        signed_in = client.get('/dashboard')
+    for html in [public.text, signed_in.text]:
+        assert 'data-tour-open' in html
+        assert 'id="arc-tour"' in html
+        assert 'Skip walkthrough' in html

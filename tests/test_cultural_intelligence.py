@@ -136,15 +136,19 @@ def test_all_three_workspaces_show_disabled_getting_results_and_cultural_section
 
     assert "runButton.disabled = true" in analysis
     assert "runButton.textContent = 'Getting results…'" in analysis
-    assert "Shared taste signals returned by Qloo" in analysis
-    assert "Shared Qloo signals" in analysis
-    assert "Why Qloo surfaced this" in analysis
-    assert "qloo_signals" in analysis
+    assert "Common cultural affinities" in analysis
+    assert "Cultural categories" in analysis
+    assert "Shared Qloo signals" not in analysis
+    assert "Why Qloo surfaced this" not in analysis
+    assert "qloo_signals" in analysis  # internal data key only; the vendor is not named in visible copy
+    assert "Qloo" not in analysis
     assert "button.disabled = true; button.setAttribute('aria-busy', 'true'); button.textContent = 'Getting results…'" in business
     assert "Culture, audience and brand affinity" in business
     assert "button.disabled = true; button.setAttribute('aria-busy', 'true'); button.textContent = 'Getting results…'" in discovery
     assert "Cultural profile" in discovery
-    assert "Qloo cultural comparison" in discovery or "Qloo cultural" in discovery
+    assert "Cross-company cultural signals" not in discovery  # Discovery is about peer lists, not the backend mechanism
+    assert "Qloo" not in business
+    assert "Qloo" not in discovery
 
 
 def test_business_insights_keeps_qloo_culture_when_gemini_is_unavailable():

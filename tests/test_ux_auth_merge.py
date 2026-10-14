@@ -114,3 +114,45 @@ def test_walkthrough_is_available_in_public_and_signed_in_layouts():
         assert 'data-tour-open' in html
         assert 'id="arc-tour"' in html
         assert 'Skip walkthrough' in html
+
+
+
+def test_dashboard_lists_all_analyses_and_provides_delete_control():
+    with TestClient(app, follow_redirects=False) as client:
+        client.post('/demo-login', data={'next': '/dashboard'})
+        html = client.get('/dashboard').text
+    assert 'Recent M&amp;A analyses' in html
+    assert 'data-delete-analysis' in html
+    assert 'Open company research, review recent M&amp;A analyses, or discover comparable businesses.' not in html
+
+
+def test_mna_and_cultural_ui_does_not_expose_provider_or_shared_provider_metric():
+    with TestClient(app, follow_redirects=False) as client:
+        client.post('/demo-login', data={'next': '/dashboard'})
+        created = client.post('/analysis/start', data={'acquirer':'Example Buyer','target':'Example Target','objective':'Full acquisition investigation','scopes':['financial']})
+        analysis_id = created.json()['analysis']['analysis_id']
+        pages = [client.get(f'/analysis/{analysis_id}').text, client.get('/discovery').text, client.get('/owner').text]
+    for html in pages:
+        assert 'Qloo' not in html
+    assert 'Shared Qloo signals' not in pages[0]
+    assert 'Cultural categories' in pages[0]
+
+
+def test_business_insights_history_dropdown_and_no_auto_research_on_load():
+    with TestClient(app, follow_redirects=False) as client:
+        client.post('/demo-login', data={'next': '/dashboard'})
+        html = client.get('/owner').text
+    assert 'insight-company-select' in html
+    assert 'Research report' not in html
+    assert 'populateCompanyHistory' in html
+    assert 'restore();' not in html
+
+
+def test_discovery_does_not_show_or_run_saved_results_on_page_load():
+    with TestClient(app, follow_redirects=False) as client:
+        client.post('/demo-login', data={'next': '/dashboard'})
+        html = client.get('/discovery').text
+    assert 'Need a business diagnosis?' not in html
+    boot = html[html.find('  (async () => {', html.find('function fillCriteria')): ]
+    assert 'form.requestSubmit()' not in boot
+    assert 'showResults(latestDiscovery.comparables' not in html

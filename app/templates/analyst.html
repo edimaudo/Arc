@@ -1,8 +1,37 @@
 {% extends "base.html" %}
-{% block title %}M&A Analysis — Arc{% endblock %}
+{% block title %}M&amp;A Analysis — Arc{% endblock %}
 {% block content %}
-<div class="wrap"><section class="page-head"><div><h1>M&amp;A Analysis</h1><p class="muted">Your recent acquisition investigations and decision support.</p></div><a class="button primary" href="/analysis/new">Start M&amp;A analysis</a></section><div id="analyst-workspace"><div class="panel empty-state"><h2>Loading saved analyses…</h2><p class="muted">Loading your recent investigations.</p></div></div></div>
+<section class="wrap page-head"><div><h1>M&amp;A Analysis</h1><p class="muted">Choose an analysis to review its findings and supporting evidence.</p></div><a class="button primary" href="/analysis/new">Start M&amp;A analysis</a></section>
+<section class="wrap panel recent-panel analyst-analysis-list"><div class="panel-head"><h2>All M&amp;A analyses</h2></div><div id="analyst-workspace"><div class="empty-state"><h3>Loading analyses…</h3></div></div></section>
 {% endblock %}
 {% block scripts %}<script>
-(async()=>{const root=document.getElementById('analyst-workspace');const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const tools={qloo_lookup_entities:'Matched cultural entities',qloo_cultural_insights:'Analyzed cultural affinities',qloo_compare_footprints:'Compared cultural footprints',qloo_trending_signals:'Reviewed cultural momentum',google_search:'Researched public company information',calculate_financial_fit:'Analyzed financial metrics',research_company:'Researched company profile',synthesize_findings:'Prepared findings and report'};try{const list=await ArcStore.allAnalyses();const a=list[0];if(!a){root.innerHTML='<section class="panel empty-state"><h2>No investigation selected</h2><p class="muted">Start an M&amp;A analysis to open the detailed diligence workspace.</p><a class="button primary" href="/analysis/new">Start M&amp;A analysis</a></section>';return;}const findings=Array.isArray(a.findings)?a.findings:[];const activity=Array.isArray(a.activity)?a.activity:[];const metric=(l,v)=>`<div class="metric-card"><span>${l}</span><strong>${esc(v??'—')}</strong>${v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?`<div class="bar"><i style="width:${Math.max(0,Math.min(100,Number(v)))}%"></i></div>`:''}</div>`;root.innerHTML=`<section class="page-head"><div><h2>${esc(a.acquirer)} <span class="muted">×</span> ${esc(a.target)}</h2><p class="muted">${esc(a.status||'Ready to investigate')}</p></div><a class="button secondary" href="/analysis/${encodeURIComponent(a.analysis_id)}">Open full analysis</a></section><section class="metric-grid">${metric('Strategic fit',a.overview?.strategic_fit)}${metric('Cultural alignment',a.overview?.cultural_alignment)}${metric('Audience expansion',a.overview?.audience_expansion)}${metric('Financial fit',a.overview?.financial_fit)}</section><section class="content-grid"><div class="panel span-2"><div class="panel-head"><h2>Key findings</h2><a href="/analysis/${encodeURIComponent(a.analysis_id)}#report">View report</a></div>${findings.length?findings.slice(0,6).map(f=>`<article class="finding"><span class="tag ${f.type==='Risk'?'risk':'opportunity'}">${esc(f.type||'Finding')}</span><h3>${esc(f.title||'Finding')}</h3><p>${esc(f.body||f.rationale||'')}</p></article>`):`<div class="empty-state"><h3>Analysis ready</h3><p class="muted">Open the investigation and run Arc to generate findings.</p><a class="button primary" href="/analysis/${encodeURIComponent(a.analysis_id)}">Open investigation</a></div>`}</div><div class="panel"><div class="panel-head"><h2>Agent activity</h2></div><ol class="activity">${activity.length?activity.map(x=>`<li><span class="dot done"></span>${esc(tools[x.tool]||(x.tool||'Activity').replace(/^qloo_/,'').replaceAll('_',' '))}</li>`).join(''):'<li class="muted">No activity yet.</li>'}</ol></div></section>`;}catch(e){root.innerHTML=`<section class="panel empty-state"><h2>Could not load the workspace</h2><p class="muted">${esc(e.message)}</p></section>`;}})();
+(async () => {
+  const root = document.getElementById('analyst-workspace');
+  const esc = v => String(v ?? '').replace(/\bqloo\b/gi, 'cultural data source').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function render(items) {
+    if (!items.length) {
+      root.innerHTML = '<div class="empty-state"><h3>No M&amp;A analyses yet</h3><p class="muted">Start an analysis to compare two companies.</p><a class="button primary" href="/analysis/new">Start M&amp;A analysis</a></div>';
+      return;
+    }
+    root.innerHTML = '<div class="recent-analysis-list">' + items.map(a => `
+      <article class="recent-analysis-row" data-analysis-row="${esc(a.analysis_id)}">
+        <a class="recent-analysis-main" href="/analysis/${encodeURIComponent(a.analysis_id)}"><strong>${esc(a.acquirer)} <span aria-hidden="true">→</span> ${esc(a.target)}</strong><span class="recent-analysis-date">${esc(a.updated_at ? new Date(a.updated_at).toLocaleString() : (a.created_at ? new Date(a.created_at).toLocaleString() : ''))}</span></a>
+        <div class="recent-analysis-meta"><span class="status">${esc(a.status || 'Ready')}</span><div class="recent-analysis-score"><span>Strategic fit</span><strong>${esc(a.overview?.strategic_fit ?? 'Not assessed')}</strong></div></div>
+        <button class="button secondary delete-analysis-button" type="button" data-delete-analysis="${esc(a.analysis_id)}" aria-label="Delete analysis for ${esc(a.acquirer)} and ${esc(a.target)}">Delete</button>
+      </article>`).join('') + '</div>';
+  }
+  async function refresh() {
+    try { render(await ArcStore.allAnalyses()); }
+    catch (error) { root.innerHTML = `<div class="empty-state"><h3>Could not load analyses</h3><p class="muted">${esc(error.message)}</p></div>`; }
+  }
+  root.addEventListener('click', async event => {
+    const button = event.target.closest('[data-delete-analysis]');
+    if (!button) return;
+    if (!window.confirm('Delete this saved M&A analysis? This cannot be undone.')) return;
+    button.disabled = true; button.textContent = 'Deleting…';
+    try { await ArcStore.deleteAnalysis(button.dataset.deleteAnalysis); await refresh(); }
+    catch (error) { button.disabled = false; button.textContent = 'Delete'; window.alert('Could not delete this analysis: ' + (error.message || 'Browser storage error')); }
+  });
+  await refresh();
+})();
 </script>{% endblock %}

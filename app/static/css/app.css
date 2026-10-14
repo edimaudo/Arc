@@ -554,3 +554,25 @@ input, select, textarea { border-radius: 3px; min-height: 46px; }
 .cultural-explanation p { margin: 6px 0 2px; overflow-wrap: anywhere; }
 .cultural-explanation-summary { margin-top: 8px; }
 .cultural-signal-list li { flex-wrap: wrap; }
+
+
+/* Recent analysis rows: separate company names, score and actions for comfortable scanning. */
+.dashboard-page-head { min-height: 110px; }
+.recent-analysis-list { display: grid; }
+.recent-analysis-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, auto) auto; align-items: center; gap: 24px; padding: 20px 0; border-top: 1px solid var(--line); }
+.recent-analysis-main { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; color: var(--text); text-decoration: none; }
+.recent-analysis-main strong { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; line-height: 1.5; font-size: 1rem; overflow-wrap: anywhere; }
+.recent-analysis-main:hover strong { text-decoration: underline; text-underline-offset: 3px; }
+.recent-analysis-date { color: var(--muted); font-size: .82rem; }
+.recent-analysis-meta { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; }
+.recent-analysis-score { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; line-height: 1.4; min-width: 0; }
+.recent-analysis-score span { color: var(--muted); font-size: .78rem; }
+.recent-analysis-score strong { overflow-wrap: anywhere; font-size: .92rem; font-weight: 600; }
+.delete-analysis-button { min-height: 38px; white-space: nowrap; }
+.button:disabled, button:disabled { opacity: .55; cursor: not-allowed; filter: grayscale(.35); }
+.analyst-analysis-list { margin-bottom: 80px; }
+@media (max-width: 720px) {
+  .recent-analysis-row { grid-template-columns: minmax(0, 1fr) auto; gap: 14px; }
+  .recent-analysis-meta { grid-column: 1; grid-row: 2; }
+  .delete-analysis-button { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+}

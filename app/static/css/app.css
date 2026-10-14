@@ -511,3 +511,46 @@ input, select, textarea { border-radius: 3px; min-height: 46px; }
 .product-purpose strong { display: block; margin-bottom: 6px; font-weight: 600; }
 .product-purpose p { margin: 0 0 8px; color: var(--muted); line-height: 1.6; }
 @media (max-width: 640px) { .product-purpose { grid-template-columns: 1fr; gap: 16px; } }
+
+
+/* Clear in-flight feedback for slow research requests. */
+.button:disabled, button:disabled, .button[aria-busy="true"] {
+  opacity: .55;
+  filter: grayscale(.7);
+  cursor: wait;
+  box-shadow: none;
+}
+.button:disabled:hover, button:disabled:hover { filter: grayscale(.7); }
+.button[aria-busy="true"]::before {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 9px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: arc-button-spin .75s linear infinite;
+}
+@keyframes arc-button-spin { to { transform: rotate(360deg); } }
+.cultural-section { display: grid; gap: 18px; }
+.cultural-category-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.cultural-category { border: 1px solid var(--line); border-radius: 4px; padding: 16px; min-width: 0; }
+.cultural-category h3 { margin: 0 0 12px; font-size: 1rem; }
+.cultural-signal-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.cultural-signal-list li { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 9px; border-bottom: 1px solid var(--line); }
+.cultural-signal-list li:last-child { border-bottom: 0; padding-bottom: 0; }
+.cultural-signal-name { min-width: 0; overflow-wrap: anywhere; }
+.cultural-affinity { flex: 0 0 auto; font-size: .76rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cultural-tags { display: flex; flex-wrap: wrap; gap: 7px; }
+.cultural-tag { display: inline-flex; align-items: center; padding: 6px 9px; border: 1px solid var(--line); background: var(--soft); border-radius: 3px; font-size: .84rem; }
+.cultural-note { padding: 12px 14px; background: var(--soft); border-left: 3px solid var(--accent); color: var(--muted); line-height: 1.6; }
+.peer-culture { padding-top: 16px; margin-top: 16px; border-top: 1px solid var(--line); }
+.peer-culture h3 { margin: 0 0 9px; font-size: 1rem; }
+@media (max-width: 760px) { .cultural-category-grid { grid-template-columns: 1fr; } }
+
+.cultural-explanation { flex: 0 0 100%; width: 100%; margin-top: 6px; font-size: .8rem; line-height: 1.55; color: var(--muted); }
+.cultural-explanation summary { cursor: pointer; width: fit-content; }
+.cultural-explanation p { margin: 6px 0 2px; overflow-wrap: anywhere; }
+.cultural-explanation-summary { margin-top: 8px; }
+.cultural-signal-list li { flex-wrap: wrap; }

@@ -123,7 +123,8 @@ class ArcAgent:
         replaces the previous multi-turn tool-planning loop for the initial report,
         which could require many sequential model round trips before showing results.
         """
-        self._require_gemini()
+        # Let the public-source request fail inside gather so Qloo can still return
+        # cultural evidence when Gemini credentials or availability are a problem.
         documents = []
         for item in goal.get("documents", []) or []:
             if not isinstance(item, dict):
@@ -150,7 +151,7 @@ class ArcAgent:
             "findings must be a list of objects with type, title, body and evidence; risks and opportunities must be concise lists of objects with title, body and evidence where available; "
             "diligence_questions must be a list of practical questions. scores may contain strategic_fit, cultural_fit, audience_expansion, financial_fit and integration_risk, "
             "but use null or 'Not assessed' wherever public evidence is insufficient. financial must contain revenue_growth, ebitda_margin, net_debt_to_ebitda, customer_concentration and assessment, "
-            "using only sourced or uploaded values. business must contain model, market, strategic_rationale and open_questions. cultural may contain public-source observations, "
+            "using only sourced or uploaded values. business must contain model, market, strategic_rationale and open_questions. cultural must be a substantive section, not a placeholder, containing profile_summary, acquirer_profile, target_profile, audience_signals, brand_positioning, shared_cultural_territory, differentiated_cultural_territory, audience_expansion_opportunities, cultural_integration_risks, practical_implications and source_evidence. Each signal should explain what was observed, why it matters commercially, and the evidence limitation. "
             "but do not attribute anything to Qloo; the application will attach Qloo entity evidence separately. report must contain executive_summary, deal_fit, key_risks, "
             "growth_opportunities, next_steps, sources and disclaimer. Make findings specific to these companies rather than generic diligence advice.\n\n"
             "ASSIGNMENT:\n" + json.dumps(brief, ensure_ascii=False)
@@ -161,63 +162,339 @@ class ArcAgent:
             if "cultural" not in scopes:
                 return {"acquirer": [], "target": [], "comparison": {}, "errors": ["Cultural analysis was not requested."]}
             try:
-                return await asyncio.wait_for(self._seed_qloo_context(brief), timeout=5.0)
+                return await asyncio.wait_for(self._seed_qloo_context(brief), timeout=6.5)
             except Exception as exc:
                 return {"acquirer": [], "target": [], "comparison": {}, "errors": [self._safe_error(exc)]}
 
         search_result, seed = await asyncio.gather(
             self._web_search_json(prompt), bounded_qloo_seed(), return_exceptions=True
         )
+        if isinstance(seed, BaseException) or not isinstance(seed, dict):
+            seed = {"acquirer": [], "target": [], "comparison": {}, "errors": ["Qloo context was unavailable."],
+                    "acquirer_profile": {}, "target_profile": {}, "shared_affinities": [],
+                    "acquirer_distinctive": [], "target_distinctive": [], "cultural_status": "unavailable"}
         if isinstance(search_result, BaseException):
+            qloo_has_signals = bool(
+                seed.get("comparison", {}).get("results")
+                or seed.get("shared_affinities")
+                or seed.get("acquirer_profile", {}).get("top_affinities")
+                or seed.get("target_profile", {}).get("top_affinities")
+            )
+            if qloo_has_signals:
+                return self._qloo_only_report(brief, seed, self._safe_error(search_result))
             raise search_result
         if not isinstance(search_result, dict) or not isinstance(search_result.get("data"), dict):
             raise RuntimeError("Grounded M&A research returned no structured result.")
         parsed = search_result["data"]
         activity = list(search_result.get("steps") or [])
-        if isinstance(seed, BaseException) or not isinstance(seed, dict):
-            seed = {"acquirer": [], "target": [], "comparison": {}, "errors": ["Qloo context was unavailable."]}
 
         result = self._normalize_result(json.dumps(parsed, ensure_ascii=False), parsed, activity)
         cultural = result.get("cultural") if isinstance(result.get("cultural"), dict) else {}
-        if seed.get("acquirer") and not cultural.get("acquirer_entities"):
-            cultural["acquirer_entities"] = seed["acquirer"]
-        if seed.get("target") and not cultural.get("target_entities"):
-            cultural["target_entities"] = seed["target"]
-        if seed.get("comparison"):
-            cultural["qloo_comparison"] = seed["comparison"]
+        cultural["acquirer_entities"] = seed.get("acquirer", [])
+        cultural["target_entities"] = seed.get("target", [])
+        cultural["qloo_signals"] = {
+            "status": seed.get("cultural_status", "unavailable"),
+            "acquirer_profile": seed.get("acquirer_profile", {}),
+            "target_profile": seed.get("target_profile", {}),
+            "comparison": seed.get("comparison", {}),
+            "shared_affinities": seed.get("shared_affinities", []),
+            "acquirer_distinctive": seed.get("acquirer_distinctive", []),
+            "target_distinctive": seed.get("target_distinctive", []),
+            "errors": seed.get("errors", []),
+            "methodology": "Qloo affinity recommendations and group comparisons are directional cultural signals, not a measure of revenue, market share, or guaranteed customer overlap.",
+        }
         result["cultural"] = cultural
         result["qloo_evidence"] = {"preflight": seed, **(result.get("qloo_evidence") or {})}
         if seed.get("acquirer") or seed.get("target") or seed.get("comparison"):
             activity.append({"tool": "qloo_preflight", "status": "complete", "result": "Qloo company-entity and cultural comparison context attached."})
         elif seed.get("errors"):
             activity.append({"tool": "qloo_preflight", "status": "limited", "result": "Qloo context unavailable; cultural findings are limited to public-source evidence."})
+        # Qloo returns affinity recommendations, not a single company-to-company
+        # compatibility percentage. Keep the old score empty and show observed shared
+        # signals in the UI instead of turning recommendation affinities into a fit score.
+        result.setdefault("scores", {})["cultural_fit"] = None
+        result["scores"]["cultural_alignment"] = None
         result["activity"] = activity
         return result
 
+    def _qloo_only_report(self, goal: dict[str, Any], seed: dict[str, Any], notice: str) -> dict[str, Any]:
+        """Keep genuine Qloo culture evidence visible when Gemini is unavailable."""
+        acquirer = str(goal.get("acquirer") or "Acquirer")
+        target = str(goal.get("target") or "Target")
+        shared = list(seed.get("shared_affinities") or [])
+        acquirer_only = list(seed.get("acquirer_distinctive") or [])
+        target_only = list(seed.get("target_distinctive") or [])
+        compare = seed.get("comparison") if isinstance(seed.get("comparison"), dict) else {}
+        findings = []
+        for item in shared[:6]:
+            name = str(item.get("name") or "Shared affinity")
+            category = str(item.get("category") or "cultural category")
+            findings.append({
+                "type": "Finding", "title": f"Shared cultural affinity: {name}",
+                "body": f"Qloo returned {name} as an affinity signal for both companies in {category.lower()}. This is a possible audience or brand adjacency to investigate, not proof that customers overlap.",
+                "evidence": "Qloo Insights affinity recommendations for the matched company entities.",
+            })
+        if not findings:
+            for profile_name, profile in (("Acquirer", seed.get("acquirer_profile", {})), ("Target", seed.get("target_profile", {}))):
+                for item in (profile.get("top_affinities") or [])[:3]:
+                    findings.append({
+                        "type": "Finding", "title": f"{profile_name} cultural signal: {item.get('name') or 'Affinity'}",
+                        "body": f"Qloo returned this affinity for the {profile_name.lower()}. Compare its relevance against the other company and validate with customer and brand evidence.",
+                        "evidence": f"Qloo {item.get('category') or item.get('type') or 'affinity'} recommendation; not a direct customer or revenue metric.",
+                    })
+        if not findings:
+            findings = [{"type": "Finding", "title": "Cultural evidence is incomplete", "body": "Qloo entity matches were found, but the provider did not return enough affinity recommendations to describe shared cultural territory. Do not infer alignment from missing data.", "evidence": "Qloo preflight response; public-source research was unavailable."}]
+        risks = [
+            {"type": "Risk", "title": "Public-company research is unavailable", "body": f"Gemini public-source research could not complete: {notice}. Financial and commercial findings are not verified in this response."},
+            {"type": "Risk", "title": "Cultural affinity is not customer overlap", "body": "Qloo signals indicate affinity relationships. Validate them with first-party customer data, brand research and market evidence before estimating revenue impact."},
+        ]
+        questions = [
+            "Which customer segments, communities and cultural interests are actually shared across both customer bases?",
+            "Do shared Qloo affinities support a measurable product, brand or channel opportunity?",
+            "Which distinctive audience preferences should each brand retain after integration?",
+            "What current financial, customer-retention and operating evidence is needed to complete the review?",
+        ]
+        summary = f"Limited M&A review for {acquirer} and {target}. Gemini public-source research is unavailable; Arc retained the Qloo cultural signals available for this run. Financial, commercial and integration conclusions remain unverified."
+        cultural = {
+            "profile_summary": "Qloo cultural data is available, but public-source research could not complete. Treat affinities as directional hypotheses, not verified customer overlap.",
+            "acquirer_entities": seed.get("acquirer", []), "target_entities": seed.get("target", []),
+            "shared_cultural_territory": shared, "differentiated_cultural_territory": {"acquirer": acquirer_only, "target": target_only},
+            "audience_signals": [], "brand_positioning": [], "audience_expansion_opportunities": [],
+            "cultural_integration_risks": risks[1:], "practical_implications": questions,
+            "qloo_signals": {
+                "status": seed.get("cultural_status", "partial"),
+                "acquirer_profile": seed.get("acquirer_profile", {}), "target_profile": seed.get("target_profile", {}),
+                "comparison": compare, "shared_affinities": shared,
+                "acquirer_distinctive": acquirer_only, "target_distinctive": target_only,
+                "errors": seed.get("errors", []),
+                "methodology": "Qloo affinity recommendations and group comparisons are directional cultural signals, not direct measures of revenue, market share or guaranteed customer overlap.",
+            },
+        }
+        return {
+            "status": "limited", "limited_mode": True, "service_notice": notice,
+            "output": summary, "summary": summary, "activity": [{"tool": "qloo_preflight", "status": "complete", "result": "Qloo culture preserved while public research is unavailable."}],
+            "findings": findings, "risks": risks, "opportunities": [], "diligence_questions": questions,
+            "scores": {"strategic_fit": None, "cultural_fit": None, "cultural_alignment": None, "audience_expansion": None, "financial_fit": None, "integration_risk": "Not assessed"},
+            "financial": {"assessment": "Not assessed: live public-source research is unavailable."},
+            "business": {"model": "Not verified", "market": "Not verified", "strategic_rationale": "Not assessed", "open_questions": questions},
+            "cultural": cultural, "qloo_evidence": {"preflight": seed},
+            "report": {"executive_summary": summary, "deal_fit": {}, "key_risks": risks, "growth_opportunities": [], "next_steps": questions, "disclaimer": "Limited mode: only available Qloo culture signals are reported. Validate all material business and financial claims with independent sources.", "service_notice": notice},
+        }
+
+    async def _resolve_company_entities(self, query: str) -> list[dict[str, Any]]:
+        """Prefer Qloo brand entities for companies, then fall back to broader entity search."""
+        query = str(query or "").strip()
+        if not query:
+            return []
+        try:
+            brand_lookup = await asyncio.wait_for(self.qloo_lookup_entities({"queries": [query], "types": ["urn:entity:brand"]}), timeout=2.4)
+            branded = brand_lookup.get("entities", [])
+            if branded:
+                return branded[:3]
+        except Exception:
+            pass
+        try:
+            fallback = await asyncio.wait_for(self.qloo_lookup_entities({"queries": [query]}), timeout=2.4)
+            return fallback.get("entities", [])[:3]
+        except Exception:
+            return []
+
     async def _seed_qloo_context(self, goal: dict[str, Any]) -> dict[str, Any]:
-        """Establish an initial Qloo footprint so Qloo remains material to every investigation."""
-        seed: dict[str, Any] = {"acquirer": [], "target": [], "comparison": {}, "errors": []}
+        """Resolve the companies and fetch Qloo affinity signals across cultural categories."""
+        seed: dict[str, Any] = {
+            "acquirer": [], "target": [], "comparison": {}, "errors": [],
+            "acquirer_profile": {}, "target_profile": {}, "shared_affinities": [],
+            "acquirer_distinctive": [], "target_distinctive": [], "cultural_status": "unavailable",
+        }
         try:
             acq, tgt = await asyncio.gather(
-                self.qloo_lookup_entities({"queries": [goal["acquirer"]]}),
-                self.qloo_lookup_entities({"queries": [goal["target"]]}),
+                self._resolve_company_entities(goal["acquirer"]),
+                self._resolve_company_entities(goal["target"]),
+                return_exceptions=True,
             )
-            seed["acquirer"] = acq.get("entities", [])[:5]
-            seed["target"] = tgt.get("entities", [])[:5]
-            seed["errors"].extend(acq.get("errors", []))
-            seed["errors"].extend(tgt.get("errors", []))
-            a_ids = [x["entity_id"] for x in seed["acquirer"]]
-            b_ids = [x["entity_id"] for x in seed["target"]]
+            if isinstance(acq, BaseException):
+                seed["errors"].append(self._safe_error(acq))
+            else:
+                # _resolve_company_entities returns the normalized list directly.
+                seed["acquirer"] = acq[:3]
+            if isinstance(tgt, BaseException):
+                seed["errors"].append(self._safe_error(tgt))
+            else:
+                seed["target"] = tgt[:3]
+
+            a_ids = [x["entity_id"] for x in seed["acquirer"] if x.get("entity_id")]
+            b_ids = [x["entity_id"] for x in seed["target"] if x.get("entity_id")]
+            tasks, names = [], []
+            if a_ids:
+                tasks.append(self._qloo_affinity_categories(a_ids, goal.get("geography"), timeout=2.8))
+                names.append("acquirer_profile")
+            if b_ids:
+                tasks.append(self._qloo_affinity_categories(b_ids, goal.get("geography"), timeout=2.8))
+                names.append("target_profile")
             if a_ids and b_ids:
-                seed["comparison"] = await self.qloo_compare_footprints({
-                    "acquirer_entity_ids": a_ids,
-                    "target_entity_ids": b_ids,
-                    "filter_types": ["urn:entity:brand", "urn:entity:place"],
-                    "model": "descriptive",
-                })
+                tasks.append(asyncio.wait_for(self.qloo.compare(
+                    a_ids, b_ids,
+                    ["urn:entity:brand", "urn:entity:artist", "urn:entity:place", "urn:entity:movie", "urn:entity:tv_show"],
+                    "descriptive", 12,
+                ), timeout=3.1))
+                names.append("comparison")
+            if tasks:
+                values = await asyncio.gather(*tasks, return_exceptions=True)
+                for name, value in zip(names, values):
+                    if isinstance(value, BaseException):
+                        seed["errors"].append(f"{name.replace('_', ' ').title()} unavailable: {self._safe_error(value)}")
+                    elif name == "comparison":
+                        seed[name] = self._compact_qloo(value, include_affinity=True)
+                    else:
+                        seed[name] = value
+            # Retain entity names alongside Qloo IDs so explainability can be rendered
+            # in human terms rather than exposing opaque identifiers in the UI.
+            seed["acquirer_profile"] = {**seed["acquirer_profile"], "matched_entities": [
+                {"entity_id": item.get("entity_id"), "name": item.get("name")} for item in seed["acquirer"]
+            ]}
+            seed["target_profile"] = {**seed["target_profile"], "matched_entities": [
+                {"entity_id": item.get("entity_id"), "name": item.get("name")} for item in seed["target"]
+            ]}
+            shared, acquirer_only, target_only = self._compare_affinity_profiles(seed["acquirer_profile"], seed["target_profile"])
+            seed["shared_affinities"] = shared
+            seed["acquirer_distinctive"] = acquirer_only
+            seed["target_distinctive"] = target_only
+            if shared or acquirer_only or target_only or seed.get("comparison", {}).get("results"):
+                seed["cultural_status"] = "available"
+            elif seed.get("acquirer_profile", {}).get("available_categories") or seed.get("target_profile", {}).get("available_categories"):
+                seed["cultural_status"] = "partial"
         except Exception as exc:
-            seed["errors"].append(str(exc))
+            seed["errors"].append(self._safe_error(exc))
         return seed
+
+    async def _qloo_affinity_categories(
+        self, entity_ids: list[str], location: str | None = None,
+        timeout: float = 2.8, filter_types: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Get Qloo affinity recommendations across cultural categories concurrently."""
+        labels = {
+            "urn:entity:brand": "Brands",
+            "urn:entity:artist": "Music and artists",
+            "urn:entity:place": "Places and destinations",
+            "urn:entity:movie": "Films",
+            "urn:entity:tv_show": "TV shows",
+        }
+        selected = filter_types or list(labels)
+
+        async def get_one(entity_type: str) -> dict[str, Any]:
+            try:
+                raw = await asyncio.wait_for(self.qloo.insights(entity_ids, entity_type, location, 8), timeout=timeout)
+                compact = self._compact_qloo(raw, include_affinity=True)
+                rows = [{
+                    "entity_id": row.get("entity_id"), "name": row.get("name"),
+                    "type": row.get("type") or entity_type, "affinity": row.get("affinity"),
+                    "explainability": row.get("explainability"),
+                } for row in compact.get("results", [])[:8] if row.get("name")]
+                query_meta = compact.get("query") if isinstance(compact.get("query"), dict) else {}
+                explainability = query_meta.get("explainability")
+                return {"entity_type": entity_type, "label": labels.get(entity_type, entity_type), "results": rows,
+                        "explainability": explainability, "status": "available" if rows else "empty"}
+            except Exception as exc:
+                return {"entity_type": entity_type, "label": labels.get(entity_type, entity_type), "results": [], "status": "unavailable", "error": self._safe_error(exc)}
+
+        categories = await asyncio.gather(*(get_one(entity_type) for entity_type in selected))
+        flat = [{**row, "category": category["label"]} for category in categories for row in category.get("results", [])]
+        flat.sort(key=lambda item: item.get("affinity") if isinstance(item.get("affinity"), (int, float)) else -1, reverse=True)
+        available = sum(1 for category in categories if category.get("results"))
+        return {
+            "status": "available" if available else "unavailable", "categories": categories,
+            "top_affinities": flat[:15], "available_categories": available,
+            "errors": [category["error"] for category in categories if category.get("error")][:4],
+            "basis": "Qloo Insights affinity recommendations based on the resolved input entities.",
+        }
+
+    @staticmethod
+    def _compare_affinity_profiles(a_profile: dict[str, Any], b_profile: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+        def flatten(profile):
+            rows = []
+            for category in profile.get("categories", []) if isinstance(profile, dict) else []:
+                for item in category.get("results", []):
+                    name = str(item.get("name") or "").strip()
+                    if name:
+                        rows.append({"name": name, "category": category.get("label", "Cultural signal"), "affinity": item.get("affinity"), "entity_id": item.get("entity_id")})
+            return rows
+        a_rows, b_rows = flatten(a_profile), flatten(b_profile)
+        def key(item):
+            return (str(item.get("category") or "").casefold(), str(item.get("name") or "").casefold())
+        a_map, b_map = {key(item): item for item in a_rows}, {key(item): item for item in b_rows}
+        shared = [dict(a_map[k], target_affinity=b_map[k].get("affinity")) for k in a_map.keys() & b_map.keys()]
+        a_only = [item for k, item in a_map.items() if k not in b_map]
+        b_only = [item for k, item in b_map.items() if k not in a_map]
+        for values in (shared, a_only, b_only):
+            values.sort(key=lambda item: item.get("affinity") if isinstance(item.get("affinity"), (int, float)) else -1, reverse=True)
+        return shared[:12], a_only[:12], b_only[:12]
+
+    async def _qloo_profile_for_query(self, query: str, location: str | None = None, filter_types: list[str] | None = None) -> dict[str, Any]:
+        """Create a Qloo cultural profile for a company or industry query."""
+        query = str(query or "").strip()
+        if not query:
+            return {"status": "unavailable", "subject": query, "matched_entities": [], "categories": [], "top_affinities": [], "note": "No company or industry was supplied."}
+        try:
+            entities = (await self._resolve_company_entities(query))[:2]
+            ids = [entity["entity_id"] for entity in entities if entity.get("entity_id")]
+            if not ids:
+                return {"status": "unavailable", "subject": query, "matched_entities": [], "categories": [], "top_affinities": [], "note": "Qloo did not return a confident entity match for this query."}
+            profile = await self._qloo_affinity_categories(ids, location, timeout=2.8, filter_types=filter_types)
+            return {**profile, "subject": query, "matched_entities": [{"name": item.get("name"), "type": item.get("type"), "entity_id": item.get("entity_id")} for item in entities], "note": "Affinities are directional taste signals for the matched entity, not direct customer or sales measurements."}
+        except Exception as exc:
+            return {"status": "unavailable", "subject": query, "matched_entities": [], "categories": [], "top_affinities": [], "errors": [self._safe_error(exc)], "note": "Qloo cultural signals could not be loaded for this query."}
+
+    async def _enrich_comparables_with_culture(self, comparables: list[dict[str, Any]], reference: str, geography: str) -> list[dict[str, Any]]:
+        """Attach Qloo cultural context to a bounded peer set without inventing a score."""
+        if not comparables:
+            return comparables
+        subset = comparables[:4]
+        async def resolve(name: str) -> list[dict[str, Any]]:
+            if not name:
+                return []
+            try:
+                return (await self._resolve_company_entities(name))[:2]
+            except Exception:
+                return []
+        lookup_tasks = [resolve(str(item.get("name") or "").strip()) for item in subset]
+        if reference:
+            reference_task = resolve(reference)
+            resolved = await asyncio.gather(reference_task, *lookup_tasks, return_exceptions=True)
+            reference_entities = resolved[0] if isinstance(resolved[0], list) else []
+            peer_entities = [value if isinstance(value, list) else [] for value in resolved[1:]]
+        else:
+            reference_entities, peer_entities = [], [value if isinstance(value, list) else [] for value in await asyncio.gather(*lookup_tasks, return_exceptions=True)]
+        reference_ids = [item.get("entity_id") for item in reference_entities if item.get("entity_id")]
+
+        async def enrich(item: dict[str, Any], matches: list[dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+            name = str(item.get("name") or "").strip()
+            matched_ids = [entry.get("entity_id") for entry in matches if entry.get("entity_id")]
+            if not matched_ids:
+                return name, {"status": "unavailable", "note": "Qloo did not return a matching company entity. Public-source cultural context remains shown above."}
+            try:
+                if reference_ids:
+                    raw = await asyncio.wait_for(self.qloo.compare(
+                        reference_ids, matched_ids,
+                        ["urn:entity:brand", "urn:entity:artist", "urn:entity:place", "urn:entity:movie", "urn:entity:tv_show"],
+                        "descriptive", 10,
+                    ), timeout=2.8)
+                    compact = self._compact_qloo(raw, include_affinity=True)
+                    signals = [{"name": row.get("name"), "type": row.get("type"), "affinity": row.get("affinity"), "explainability": row.get("explainability")} for row in compact.get("results", []) if row.get("name")][:8]
+                    aggregate = compact.get("query", {}).get("explainability") if isinstance(compact.get("query"), dict) else None
+                    return name, {"status": "available" if signals else "partial", "reference_match": [entry.get("name") for entry in reference_entities], "company_match": [entry.get("name") for entry in matches], "reference_match_entities": [{"entity_id": entry.get("entity_id"), "name": entry.get("name")} for entry in reference_entities], "company_match_entities": [{"entity_id": entry.get("entity_id"), "name": entry.get("name")} for entry in matches], "signals": signals, "explainability": aggregate, "note": "Qloo compared the resolved reference and peer entities across cultural categories. This is directional taste context, not a score of company value or deal suitability."}
+                profile = await self._qloo_affinity_categories(matched_ids, geography, timeout=2.5, filter_types=["urn:entity:brand", "urn:entity:artist", "urn:entity:place"])
+                return name, {"status": profile.get("status", "unavailable"), "matched_entities": [{"name": entry.get("name"), "type": entry.get("type")} for entry in matches], "categories": profile.get("categories", []), "top_affinities": profile.get("top_affinities", [])[:8], "note": "Qloo profile for the peer; use as directional cultural context, not evidence of direct customer overlap."}
+            except Exception as exc:
+                return name, {"status": "unavailable", "signals": [], "note": "Qloo comparison is temporarily unavailable.", "errors": [self._safe_error(exc)]}
+
+        enriched_values = await asyncio.gather(*(enrich(item, peer_entities[index]) for index, item in enumerate(subset)), return_exceptions=True)
+        mapped = {value[0].casefold(): value[1] for value in enriched_values if isinstance(value, tuple) and value[0]}
+        enriched = []
+        for item in comparables:
+            copy = dict(item)
+            copy["cultural_intelligence"] = mapped.get(str(item.get("name") or "").casefold(), {"status": "not_run", "note": "Public-source cultural context is available; Qloo cross-check was not run for this peer in this pass."})
+            enriched.append(copy)
+        return enriched
 
     async def _create_interaction(self, goal: dict[str, Any]) -> dict[str, Any]:
         payload = {
@@ -343,22 +620,49 @@ class ArcAgent:
             "This is ordinary business research, not M&A analysis: do not discuss acquisitions, deal fit, integration, buyers, sellers, or transaction rationale. "
             "Use Google Search grounding and return JSON only with keys: company, sector, geography, business_overview, business_model, "
             "market_position, current_trends, competitive_landscape, customer_and_product_signals, growth_opportunities, "
-            "business_risks, recommended_actions, key_metrics_to_watch, sources. "
+            "business_risks, recommended_actions, key_metrics_to_watch, cultural_context, sources. "
             "current_trends, customer_and_product_signals, growth_opportunities, business_risks, recommended_actions, and key_metrics_to_watch "
             "must be concise arrays; arrays of findings should use objects with title and detail, and recommendations should include action and reason. "
             "competitive_landscape should be an array of objects with name, summary, and website where known. "
+            "cultural_context must be substantive and contain consumer_identity_signals, brand_positioning, culturally relevant trends, audience_implications, and evidence. "
+            "Explain how culture, lifestyle, media, places, music, creators or community preferences affect customer behavior, brand relevance, positioning and product/marketing choices. "
+            "Distinguish sourced observations from hypotheses and never stereotype demographics. "
             "sources must be a list of objects containing title and url. Ground factual claims in public sources, include useful sources, "
             "separate facts from interpretation, and never invent revenue, market share, financial metrics, URLs, or sources. "
             "For unavailable information, state that it is not publicly disclosed rather than guessing. Prioritize actionable observations over generic advice.\n"
             f"COMPANY: {company or 'Not specified'}\nSECTOR: {sector or 'Infer from company if supported'}\n"
             f"GEOGRAPHY: {geography}\nFOCUS: {focus}"
         )
-        search = await self._web_search_json(prompt)
+        subject = company or sector
+        async def bounded_qloo_profile():
+            try:
+                return await asyncio.wait_for(self._qloo_profile_for_query(subject, geography), timeout=6.0)
+            except Exception as exc:
+                return {"status": "unavailable", "subject": subject, "matched_entities": [], "categories": [], "top_affinities": [], "note": "Qloo cultural signals are temporarily unavailable.", "errors": [self._safe_error(exc)]}
+        search, qloo_profile = await asyncio.gather(self._web_search_json(prompt), bounded_qloo_profile(), return_exceptions=True)
+        if isinstance(search, BaseException):
+            if isinstance(qloo_profile, dict) and qloo_profile.get("status") == "available":
+                limited_note = "Live public-source research is temporarily unavailable. Company-specific operating facts, competitor details and market claims were not verified in this response."
+                return {"insights": {
+                    "company": company or "Industry overview", "sector": sector, "geography": geography,
+                    "business_overview": limited_note, "business_model": "Not verified", "market_position": "Not verified",
+                    "current_trends": [], "competitive_landscape": [], "customer_and_product_signals": [],
+                    "growth_opportunities": [], "business_risks": [], "recommended_actions": [], "key_metrics_to_watch": [],
+                    "cultural_context": {},
+                    "cultural_intelligence": {"public_context": {}, "qloo_profile": qloo_profile,
+                        "interpretation_note": "Public-source research was unavailable. Qloo affinity recommendations are directional taste signals, not a direct measure of customer overlap, revenue or market share."},
+                    "sources": [], "research_status": "limited",
+                }, "search_activity": [{"tool": "qloo_business_profile", "status": "complete", "result": "Qloo culture preserved while public-source research is unavailable."}]}
+            raise search
         insights = search["data"]
         insights.setdefault("company", company or "Industry overview")
         insights.setdefault("sector", sector)
         insights.setdefault("geography", geography)
-        return {"insights": insights, "search_activity": search["steps"]}
+        public_culture = insights.get("cultural_context") if isinstance(insights.get("cultural_context"), dict) else {}
+        if isinstance(qloo_profile, BaseException):
+            qloo_profile = {"status": "unavailable", "subject": subject, "matched_entities": [], "categories": [], "top_affinities": [], "note": "Qloo cultural signals are temporarily unavailable."}
+        insights["cultural_intelligence"] = {"public_context": public_culture, "qloo_profile": qloo_profile, "interpretation_note": "Public-source cultural research and Qloo affinity recommendations are complementary evidence. Qloo affinity is directional and should not be read as a direct measure of customer overlap, revenue, or market share."}
+        return {"insights": insights, "search_activity": search.get("steps", [])}
 
     async def find_comparable_companies(self, args: dict[str, Any]) -> dict[str, Any]:
         """Find companies of comparable business scale, without requiring an M&A analysis."""
@@ -374,8 +678,10 @@ class ArcAgent:
             "not an acquisition-target search: do not rank acquisition fit, recommend an acquisition, or use strategic/cultural fit scores. "
             "Use current Google Search grounding. Prefer comparable private or public companies in the requested geography. "
             "Return JSON only with keys reference_company, sector, geography, comparables. Each comparable must contain name, sector, geography, "
-            "website, annual_revenue_estimate, company_valuation_estimate, employee_count_estimate, business_summary, comparability_reason, "
-            "and sources (a list of title/url objects). Each estimate must include its currency/units and period when known; use null or 'Not publicly disclosed' "
+            "website, annual_revenue_estimate, company_valuation_estimate, employee_count_estimate, business_summary, comparability_reason, cultural_context, "
+            "and sources (a list of title/url objects). cultural_context should summarize evidence about consumer audience, brand positioning, culturally relevant categories, "
+            "customer communities, lifestyle or media affinities and local taste where relevant, with clear evidence basis and limits. Culture is a required peer-screening dimension alongside scale and industry, "
+            "but do not turn it into an acquisition-fit score. Each estimate must include its currency/units and period when known; use null or 'Not publicly disclosed' "
             "when no reliable public figure exists. Never fabricate financial estimates or URLs. Explain why each business is comparable based on actual "
             "size/scale and industry, not potential deal logic. Prefer official company sources, filings, credible financial press, or reputable databases. "
             "Requested comparison metric: " + metric_label + ". Requested size band: " + band + ". Return the strongest supported matches first.\n"
@@ -395,9 +701,15 @@ class ArcAgent:
             if reference and str(item.get("name") or "").casefold() == ref_normalized:
                 continue
             cleaned.append(item)
+        # Culture is a first-class peer attribute. Cross-check a bounded subset in Qloo
+        # without inventing a cultural similarity percentage.
+        try:
+            enriched = await asyncio.wait_for(self._enrich_comparables_with_culture(cleaned[:10], reference, geography), timeout=6.5)
+        except Exception:
+            enriched = [dict(item, cultural_intelligence={"status": "unavailable", "note": "Qloo cultural comparison did not complete in this pass."}) for item in cleaned[:10]]
         return {
             "criteria": {"reference_company": reference, "sector": sector, "geography": geography, "size_metric": metric, "size_band": band},
-            "comparables": cleaned[:10],
+            "comparables": enriched,
             "search_activity": search["steps"],
         }
 
@@ -557,7 +869,9 @@ class ArcAgent:
     @classmethod
     def _compact_qloo(cls, result: dict[str, Any], include_affinity: bool = False) -> dict[str, Any]:
         raw = result.get("results") or result.get("entities") or []
+        query_meta = result.get("query") if isinstance(result.get("query"), dict) else {}
         if isinstance(raw, dict):
+            query_meta = raw.get("query") if isinstance(raw.get("query"), dict) else query_meta
             raw = raw.get("entities") or raw.get("results") or []
         rows = []
         for item in raw[:30]:
@@ -569,10 +883,18 @@ class ArcAgent:
                 "type": item.get("type"),
                 "properties": item.get("properties", {}),
             }
-            if include_affinity:
-                row["affinity"] = cls._numeric(item.get("affinity") or item.get("score") or item.get("query", {}).get("affinity"))
+            raw_affinity = item.get("affinity")
+            if raw_affinity is None:
+                raw_affinity = item.get("score")
+            if raw_affinity is None:
+                raw_affinity = (item.get("query") or {}).get("affinity")
+            row["affinity"] = cls._numeric(raw_affinity)
+            query_meta = item.get("query") if isinstance(item.get("query"), dict) else {}
+            explanation = item.get("explainability") or query_meta.get("explainability")
+            if explanation is not None:
+                row["explainability"] = explanation
             rows.append(row)
-        return {"count": len(rows), "results": rows, "query": result.get("query", {}), "raw_excerpt": json.dumps(result, ensure_ascii=False)[:12000]}
+        return {"count": len(rows), "results": rows, "query": query_meta, "raw_excerpt": json.dumps(result, ensure_ascii=False)[:12000]}
 
     @staticmethod
     def _numeric(value: Any) -> float | None:

@@ -26,6 +26,7 @@
   const count = document.getElementById('results-count');
   let sourceContextId = '';
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const formatAffinity = value => { const n = Number(value); if (!Number.isFinite(n)) return String(value ?? ''); return `${Math.round(n >= 0 && n <= 1 ? n * 100 : n)}/100`; };
   const bands = {
     revenue: ['Any size', 'Under $10 million', '$10 million–$50 million', '$50 million–$250 million', '$250 million–$1 billion', '$1 billion or more'],
     valuation: ['Any size', 'Under $50 million', '$50 million–$250 million', '$250 million–$1 billion', '$1 billion–$5 billion', '$5 billion or more'],
@@ -42,6 +43,38 @@
       return url ? `<a class="text-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || url)} ↗</a>` : '';
     }).filter(Boolean).join('')}</div>`;
   }
+  function cultureContent(value) {
+    if (!value) return '';
+    if (typeof value === 'string') return `<p>${esc(value)}</p>`;
+    if (Array.isArray(value)) return value.length ? `<ul class="evidence-list">${value.slice(0,5).map(item => `<li>${item && typeof item === 'object' ? `<strong>${esc(item.title || item.theme || item.signal || item.name || 'Cultural signal')}</strong><p>${esc(item.detail || item.summary || item.evidence || item.implication || item.description || '')}</p>` : esc(item)}</li>`).join('')}</ul>` : '';
+    return `<div class="insight-list">${Object.entries(value).filter(([key,v]) => !['sources'].includes(key.toLowerCase()) && v).map(([key,v]) => `<article><h4>${esc(key.replaceAll('_', ' ').replace(/\b\w/g,c=>c.toUpperCase()))}</h4><p>${esc(Array.isArray(v) ? v.map(x => typeof x === 'string' ? x : (x.detail || x.summary || x.name || '')).filter(Boolean).join(' · ') : (typeof v === 'object' ? JSON.stringify(v) : v))}</p></article>`).join('')}</div>`;
+  }
+  function explainabilityText(value, profile = {}) {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value !== 'object') return String(value);
+    if (value.warning) return `Qloo note: ${value.warning}`;
+    const knownEntities = [...(Array.isArray(profile.matched_entities) ? profile.matched_entities : []), ...(Array.isArray(profile.company_match_entities) ? profile.company_match_entities : []), ...(Array.isArray(profile.reference_match_entities) ? profile.reference_match_entities : [])];
+    const aliases = new Map(knownEntities.filter(item => item?.entity_id && item?.name).map(item => [String(item.entity_id), String(item.name)]));
+    const labelFor = key => aliases.get(String(key)) || String(key).replaceAll('_', ' ');
+    const valueText = detail => {
+      if (typeof detail === 'number') return `${(detail <= 1 ? detail * 100 : detail).toFixed(0)}%`;
+      if (Array.isArray(detail)) return detail.map(item => typeof item === 'string' ? (aliases.get(item) || item) : (item.name || aliases.get(item.entity_id || item.id) || item.entity_name || item.entity_id || '')).filter(Boolean).slice(0, 4).join(', ');
+      if (detail && typeof detail === 'object') return Object.entries(detail).slice(0, 4).map(([key, nested]) => `${labelFor(key)} ${valueText(nested)}`).join(', ');
+      return String(detail);
+    };
+    return Object.entries(value).slice(0, 5).map(([key, detail]) => `${labelFor(key)}: ${valueText(detail)}`).filter(Boolean).join(' · ');
+  }
+  function qlooPeerCulture(profile) {
+    profile = profile || {};
+    const categories = Array.isArray(profile.categories) ? profile.categories.filter(c => Array.isArray(c.results) && c.results.length) : [];
+    const signals = Array.isArray(profile.signals) ? profile.signals : (Array.isArray(profile.top_affinities) ? profile.top_affinities : []);
+    const items = signals.length ? signals.slice(0,8).map(item => `<span class="cultural-tag">${esc(item.name || item.title || '')}${item.category || item.type ? ` · ${esc(item.category || item.type)}` : ''}${item.affinity !== null && item.affinity !== undefined ? ` · ${esc(formatAffinity(item.affinity))} affinity` : ''}</span>`).join('') : categories.flatMap(c => c.results.slice(0,3).map(x => `<span class="cultural-tag">${esc(x.name || '')}</span>`)).join('');
+    const rowExplanations = signals.filter(item => explainabilityText(item.explainability, profile)).slice(0,4).map(item => `<details class="cultural-explanation"><summary>Why ${esc(item.name || 'this affinity')} appeared</summary><p>${esc(explainabilityText(item.explainability, profile))}</p></details>`).join('');
+    const aggregateExplanation = explainabilityText(profile.explainability, profile);
+    const matched = Array.isArray(profile.company_match) ? profile.company_match : (Array.isArray(profile.matched_entities) ? profile.matched_entities.map(x => x.name) : []);
+    return `<div class="peer-culture"><h3>Cultural and audience signals</h3>${profile.status === 'available' || items ? `<p class="muted">${esc(profile.note || 'Qloo cultural signals are available for this peer.')}</p><div class="cultural-tags">${items || matched.map(x=>`<span class="cultural-tag">${esc(x)}</span>`).join('')}</div>${rowExplanations}${aggregateExplanation ? `<details class="cultural-explanation"><summary>What influenced these results</summary><p>${esc(aggregateExplanation)}</p></details>` : ''}` : `<p class="muted">${esc(profile.note || 'No Qloo match was returned for this peer. Public-source cultural context remains available.')}</p>`}</div>`;
+  }
   function showResults(companies, criteria) {
     count.textContent = `${companies.length} ${companies.length === 1 ? 'company' : 'companies'}`;
     if (!companies.length) {
@@ -55,7 +88,9 @@
         ['Employees', c.employee_count_estimate]
       ].filter(([,v]) => v !== null && v !== undefined && v !== '' && v !== 'Not publicly disclosed');
       const website = typeof c.website === 'string' && /^https?:\/\//i.test(c.website) ? c.website : '';
-      return `<article class="candidate-card comparable-card"><div class="candidate-top"><div><h2>${esc(c.name || 'Company')}</h2><p class="muted">${esc(c.sector || criteria.sector)}${c.geography ? ' · ' + esc(c.geography) : ''}</p></div>${website ? `<a class="text-link" href="${esc(website)}" target="_blank" rel="noopener noreferrer">Company website ↗</a>` : ''}</div><p>${esc(c.business_summary || 'No business summary was returned.')}</p>${facts.length ? `<div class="comparable-facts">${facts.map(([label,val]) => `<div><span>${label}</span><strong>${esc(val)}</strong></div>`).join('')}</div>` : '<p class="muted">Comparable financial or size figures were not publicly available.</p>'}<div class="comparable-reason"><strong>Why it is comparable</strong><p>${esc(c.comparability_reason || 'The company matched the requested industry and search criteria. Verify scale against the linked sources.')}</p></div>${sourceLinks(c.sources)}</article>`;
+      const culture = c.cultural_intelligence || {};
+      const publicCulture = c.cultural_context || {};
+      return `<article class="candidate-card comparable-card"><div class="candidate-top"><div><h2>${esc(c.name || 'Company')}</h2><p class="muted">${esc(c.sector || criteria.sector)}${c.geography ? ' · ' + esc(c.geography) : ''}</p></div>${website ? `<a class="text-link" href="${esc(website)}" target="_blank" rel="noopener noreferrer">Company website ↗</a>` : ''}</div><p>${esc(c.business_summary || 'No business summary was returned.')}</p>${facts.length ? `<div class="comparable-facts">${facts.map(([label,val]) => `<div><span>${label}</span><strong>${esc(val)}</strong></div>`).join('')}</div>` : '<p class="muted">Comparable financial or size figures were not publicly available.</p>'}<div class="comparable-reason"><strong>Why it is comparable</strong><p>${esc(c.comparability_reason || 'The company matched the requested industry and search criteria. Verify scale against the linked sources.')}</p></div><div class="peer-culture"><h3>Cultural profile</h3>${cultureContent(publicCulture) || '<p class="muted">Public-source cultural context was not returned for this company.</p>'}${qlooPeerCulture(culture)}</div>${sourceLinks(c.sources)}</article>`;
     }).join('');
   }
   form.addEventListener('submit', async event => {
@@ -71,8 +106,8 @@
       list.innerHTML = '<div class="empty-state"><h3>Add a reference company or industry</h3><p class="muted">Arc can infer the industry from a reference company, or use the sector you enter.</p></div>';
       return;
     }
-    button.disabled = true; button.textContent = 'Researching companies…'; count.textContent = '';
-    list.innerHTML = '<div class="empty-state"><h3>Searching the market</h3><p class="muted">Arc is checking company profiles and public information for comparable scale and industry.</p></div>';
+    button.disabled = true; button.setAttribute('aria-busy', 'true'); button.textContent = 'Getting results…'; count.textContent = '';
+    list.innerHTML = '<div class="empty-state"><h3>Getting results</h3><p class="muted">Arc is checking company scale, brand context and Qloo cultural affinities for comparable businesses.</p></div>';
     try {
       const response = await fetch('/discovery/api/comparables', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(criteria)});
       const data = await response.json().catch(() => ({}));
@@ -84,7 +119,7 @@
       const message = /fetch|network|load failed/i.test(error.message || '') ? 'Arc could not reach the research service. Your search criteria are still here; try again in a moment.' : (error.message || 'Arc could not find comparable companies.');
       list.innerHTML = `<div class="empty-state"><h3>Discovery is temporarily unavailable</h3><p class="muted">${esc(message)}</p><button class="button secondary" type="button" data-retry-discovery>Try again</button><p class="muted">If this continues, check the Gemini API key, model setting, quota and provider status in Vercel.</p></div>`;
       list.querySelector('[data-retry-discovery]')?.addEventListener('click', () => form.requestSubmit());
-    } finally { button.disabled = false; button.textContent = 'Find comparable companies'; }
+    } finally { button.disabled = false; button.setAttribute('aria-busy', 'false'); button.textContent = 'Find comparable companies'; }
   });
   updateBands();
   function fillCriteria(criteria) {

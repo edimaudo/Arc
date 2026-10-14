@@ -24,8 +24,10 @@ QLOO_API_KEY = env('QLOO_API_KEY')
 QLOO_BASE_URL = env('QLOO_BASE_URL', 'https://hackathon.api.qloo.com').rstrip('/')
 QLOO_TIMEOUT_SECONDS = float(env('QLOO_TIMEOUT_SECONDS', '25') or '25')
 GEMINI_API_KEY = env('GEMINI_API_KEY')
-GEMINI_MODEL = env('GEMINI_MODEL', 'gemini-2.5-pro')
-GEMINI_TIMEOUT_SECONDS = float(env('GEMINI_TIMEOUT_SECONDS', '120') or '120')
+_configured_gemini_model = env('GEMINI_MODEL', 'gemini-3.5-flash')
+# Migrate the previous application default even when it remains set in Vercel/.env.
+GEMINI_MODEL = 'gemini-3.5-flash' if _configured_gemini_model == 'gemini-2.5-pro' else _configured_gemini_model
+GEMINI_TIMEOUT_SECONDS = float(env('GEMINI_TIMEOUT_SECONDS', '60') or '60')
 MAX_DOCUMENT_BYTES = int(env('MAX_DOCUMENT_BYTES', '12000000') or '12000000')
 MAX_DOCUMENTS_PER_ANALYSIS = int(env('MAX_DOCUMENTS_PER_ANALYSIS', '8') or '8')
 MAX_TOOL_TURNS = int(env('MAX_TOOL_TURNS', '12') or '12')

@@ -1,3 +1,4 @@
+import asyncio
 import os
 import unittest
 
@@ -9,7 +10,8 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.auth import DEMO_EMAIL, DEMO_PASSWORD, authenticate_user
 from app.services import analysis_service
-from app.routers import analyses, discovery, dashboard
+from app.services.analysis_service import create_analysis, run_investigation
+from app.routers import discovery, dashboard
 
 
 class StubAgent:
@@ -28,9 +30,6 @@ class StubAgent:
             'qloo_evidence': {},
             'report': {'executive_summary': 'Executive summary.', 'disclaimer': 'Validate material findings.'},
         }
-
-    async def ask(self, question, context):
-        return 'Arc answer grounded in the investigation.'
 
 
 class DiscoveryStub:
@@ -60,10 +59,8 @@ class BusinessInsightsStub:
 class IntegrationTests(unittest.TestCase):
     def setUp(self):
         self.prev_agent = analysis_service._AGENT
-        self.prev_route_agent = analyses._agent
         self.prev_dashboard_agent = dashboard._agent
         analysis_service._AGENT = StubAgent()
-        analyses._agent = StubAgent()
         self.client = TestClient(app, follow_redirects=False)
         response = self.client.post('/demo-login', data={'next': '/dashboard'})
         if response.status_code != 303:
@@ -71,7 +68,6 @@ class IntegrationTests(unittest.TestCase):
 
     def tearDown(self):
         analysis_service._AGENT = self.prev_agent
-        analyses._agent = self.prev_route_agent
         dashboard._agent = self.prev_dashboard_agent
 
     def test_demo_user_authenticates_without_account_storage(self):
@@ -98,6 +94,20 @@ class IntegrationTests(unittest.TestCase):
         finally:
             discovery._agent = original
 
+    def test_business_insights_shows_actionable_provider_error(self):
+        class UnavailableInsights:
+            async def research_business_insights(self, args):
+                raise RuntimeError('Gemini API request failed (429): quota exceeded')
+        original = dashboard._agent
+        dashboard._agent = UnavailableInsights()
+        try:
+            response = self.client.post('/owner/api/insights', json={'company': 'Example Co'})
+            self.assertEqual(response.status_code, 503)
+            self.assertIn('quota', response.json()['error'].lower())
+            self.assertTrue(response.json()['retryable'])
+        finally:
+            dashboard._agent = original
+
     def test_business_insights_is_independent_company_research(self):
         original = dashboard._agent
         dashboard._agent = BusinessInsightsStub()
@@ -115,6 +125,20 @@ class IntegrationTests(unittest.TestCase):
         finally:
             dashboard._agent = original
 
+    def test_discovery_shows_actionable_provider_error(self):
+        class UnavailableDiscovery:
+            async def find_comparable_companies(self, args):
+                raise RuntimeError('Gemini API rejected credentials or permissions (403).')
+        original = discovery._agent
+        discovery._agent = UnavailableDiscovery()
+        try:
+            response = self.client.post('/discovery/api/comparables', json={'sector': 'Retail'})
+            self.assertEqual(response.status_code, 503)
+            self.assertIn('credentials', response.json()['error'].lower())
+            self.assertTrue(response.json()['retryable'])
+        finally:
+            discovery._agent = original
+
     def test_blank_upload_is_optional_and_does_not_trigger_unknown_file_type(self):
         response = self.client.post('/analysis/start', data={
             'acquirer': 'Acquirer Ltd', 'target': 'Target Ltd', 'objective': 'Full acquisition investigation',
@@ -124,6 +148,45 @@ class IntegrationTests(unittest.TestCase):
         analysis = response.json()['analysis']
         self.assertEqual(analysis['documents'], [])
         self.assertEqual(analysis['upload_errors'], [])
+
+    def test_live_research_outage_returns_limited_analysis(self):
+        class UnavailableAgent:
+            async def run(self, goal, max_turns=12):
+                raise RuntimeError('Gemini API request timed out after 60s.')
+        previous = analysis_service._AGENT
+        analysis_service._AGENT = UnavailableAgent()
+        try:
+            analysis = create_analysis('Buyer Ltd', 'Target Ltd', 'Full acquisition investigation', ['financial', 'business'])
+            result = asyncio.run(run_investigation(analysis))
+            self.assertTrue(result['limited_mode'])
+            self.assertIn('limited analysis', result['status'].lower())
+            self.assertGreaterEqual(len(result['findings']), 3)
+            self.assertGreaterEqual(len(result['risks']['items']), 3)
+            self.assertIsNone(result['overview']['strategic_fit'])
+            self.assertIn('timed out', result['service_notice'].lower())
+        finally:
+            analysis_service._AGENT = previous
+
+    def test_uploaded_document_metrics_survive_api_outage(self):
+        class UnavailableAgent:
+            async def run(self, goal, max_turns=12):
+                raise RuntimeError('Gemini API request timed out after 60s.')
+        previous = analysis_service._AGENT
+        analysis_service._AGENT = UnavailableAgent()
+        try:
+            analysis = create_analysis('Buyer Ltd', 'Target Ltd', 'Full acquisition investigation', ['financial'])
+            analysis['documents'] = [{
+                'filename': 'metrics.csv', 'type': 'csv',
+                'text': 'Revenue growth 12%; EBITDA margin 22%.',
+                'metrics': {'revenue_growth': 0.12, 'ebitda_margin': 0.22},
+            }]
+            result = asyncio.run(run_investigation(analysis))
+            self.assertEqual(result['financial']['revenue_growth'], 0.12)
+            self.assertEqual(result['financial']['ebitda_margin'], 0.22)
+            self.assertTrue(any('Uploaded material' in item['title'] for item in result['findings']))
+            self.assertTrue(result['limited_mode'])
+        finally:
+            analysis_service._AGENT = previous
 
     def test_analysis_flow_is_stateless_from_the_server(self):
         created = self.client.post('/analysis/start', data={
@@ -149,12 +212,16 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(pdf.status_code, 200)
         self.assertTrue(pdf.content.startswith(b'%PDF'))
 
-    def test_ask_arc_receives_client_stored_analysis(self):
-        created = self.client.post('/analysis/start', data={'acquirer': 'A', 'target': 'B', 'objective': 'Full acquisition investigation', 'scopes': ['financial']})
+    def test_analysis_page_does_not_show_redundant_ask_arc_chat(self):
+        created = self.client.post('/analysis/start', data={
+            'acquirer': 'Example Acquirer', 'target': 'Example Target',
+            'objective': 'Full acquisition investigation', 'scopes': ['financial']
+        })
         analysis = created.json()['analysis']
-        response = self.client.post(f"/analysis/{analysis['analysis_id']}/ask", json={'question': 'What matters?', 'analysis': analysis})
+        response = self.client.get(f"/analysis/{analysis['analysis_id']}")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['answer'], 'Arc answer grounded in the investigation.')
+        self.assertNotIn('Ask Arc', response.text)
+        self.assertNotIn('open-ask', response.text)
 
     def test_landing_and_internal_navigation_labels(self):
         body = self.client.get('/').text
@@ -168,6 +235,9 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn('<nav aria-label="Primary">', response.text)
             self.assertNotIn('class="eyebrow"', response.text)
             self.assertNotIn('class="kicker"', response.text)
+        self.assertIn('Find 6–10 companies similar in industry and business scale', self.client.get('/discovery').text)
+        self.assertIn('What is happening in this business or market', self.client.get('/owner').text)
+        self.assertIn('aria-label="Open app tour"', self.client.get('/dashboard').text)
 
     def test_unauthenticated_routes_redirect_to_sign_in(self):
         client = TestClient(app, follow_redirects=False)

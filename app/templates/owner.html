@@ -1,12 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Business Insights — Arc{% endblock %}
 {% block content %}
-<section class="wrap page-head"><div><h1>Business Insights</h1><p class="muted">Research a company or industry to understand its business model, market, competition, growth opportunities, and operating risks.</p></div></section>
+<section class="wrap page-head"><div><h1>Business Insights</h1><p class="muted">Understand how a company or industry operates: its business model, market trends, customers and products, competitive position, risks, and what management should do next.</p></div></section>
+<section class="wrap product-purpose" aria-label="Business Insights purpose">
+    <div><strong>Business Insights answers</strong><p>What is happening in this business or market, and what should management do next?</p></div>
+    <div><strong>For a list of peer companies</strong><p>Use Discovery to identify businesses of similar industry and scale.</p><a class="text-link" href="/discovery">Open Discovery →</a></div>
+</section>
 <section class="wrap panel business-research-panel">
   <form id="business-insights-form">
     <div class="two-col"><label>Company<input id="insight-company" placeholder="Company name" autocomplete="organization"></label><label>Industry (optional)<input id="insight-sector" placeholder="e.g. Retail, software, financial services"></label></div>
     <div class="two-col"><label>Geography<input id="insight-geography" value="Canada" placeholder="Country or region"></label><label>Focus<select id="insight-focus"><option>Overall business</option><option>Market and competitors</option><option>Customers and products</option><option>Growth opportunities</option><option>Operations and business risks</option></select></label></div>
-    <p class="muted">Enter a company, an industry, or both. Arc will use public sources and identify figures that are not available rather than estimate them.</p>
+    <p class="muted">Best for understanding one business or an industry. The report focuses on what is happening, why it matters operationally, and what to monitor or do next.</p>
     <div><button class="button primary" id="run-business-insights" type="submit">Research business</button></div>
   </form>
 </section>
@@ -47,12 +51,16 @@
     root.innerHTML = '<div class="empty-state"><h2>Researching the business</h2><p class="muted">Arc is reviewing public company information and market sources.</p></div>';
     try {
       const response = await fetch('/owner/api/insights', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(criteria)});
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || data.error || 'Business research failed.');
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || data.error || 'The business research service did not return a usable response. Check provider availability and retry.');
       const saved = {id:'insight-' + Date.now(), created_at:new Date().toISOString(), criteria, insights:data.insights || {}};
       await ArcStore.putInsight(saved);
       render(saved.insights, criteria, new Date(saved.created_at).toLocaleString());
-    } catch (error) { root.innerHTML = `<div class="empty-state"><h2>Business research could not be completed</h2><p class="muted">${esc(error.message)}</p></div>`; }
+    } catch (error) {
+      const message = /fetch|network|load failed/i.test(error.message || '') ? 'Arc could not reach the research service. Your entered criteria are still here; try again in a moment.' : (error.message || 'Arc could not complete business research.');
+      root.innerHTML = `<div class="empty-state"><h2>Business research is temporarily unavailable</h2><p class="muted">${esc(message)}</p><button class="button secondary" type="button" data-retry-business>Try again</button><p class="muted">If this continues, check the Gemini API key, model setting, quota and provider status in Vercel.</p></div>`;
+      root.querySelector('[data-retry-business]')?.addEventListener('click', () => form.requestSubmit());
+    }
     finally { button.disabled = false; button.textContent = 'Research business'; }
   });
   restore();

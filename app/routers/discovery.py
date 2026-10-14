@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from app.services.agent_service import ArcAgent
 from app.auth import require_authenticated
+from app.services.api_errors import friendly_api_error
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / 'templates'))
 router = APIRouter(prefix='/discovery', tags=['discovery'], dependencies=[Depends(require_authenticated)])
@@ -41,7 +42,7 @@ async def comparable_companies_api(request: Request):
     try:
         result = await _agent.find_comparable_companies(criteria)
     except Exception as exc:
-        return JSONResponse({'error': str(exc), 'status': 'Discovery failed'}, status_code=502)
+        return JSONResponse({'error': friendly_api_error(exc, 'Discovery service'), 'status': 'Discovery failed', 'retryable': True}, status_code=503)
     return {
         'comparables': result.get('comparables', [])[:10],
         'search_activity': result.get('search_activity', []),

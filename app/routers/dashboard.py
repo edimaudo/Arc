@@ -4,6 +4,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import JSONResponse
 from app.services.agent_service import ArcAgent
 from app.auth import require_authenticated
+from app.services.api_errors import friendly_api_error
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / 'templates'))
 router = APIRouter(dependencies=[Depends(require_authenticated)])
@@ -46,5 +47,5 @@ async def business_insights_api(request: Request):
     try:
         result = await _agent.research_business_insights(criteria)
     except Exception as exc:
-        return JSONResponse({'error': str(exc), 'status': 'Business research failed'}, status_code=502)
+        return JSONResponse({'error': friendly_api_error(exc, 'Business research service'), 'status': 'Business research failed', 'retryable': True}, status_code=503)
     return {'insights': result.get('insights', {}), 'search_activity': result.get('search_activity', []), 'criteria': criteria}

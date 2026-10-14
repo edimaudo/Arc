@@ -1,16 +1,20 @@
 {% extends "base.html" %}
 {% block title %}Discovery — Arc{% endblock %}
 {% block content %}
-<section class="wrap page-head"><div><h1>Discovery</h1><p class="muted">Find companies similar in industry and business scale. Search by revenue, estimated company value, or employee count without starting an M&amp;A analysis.</p></div></section>
+<section class="wrap page-head"><div><h1>Discovery</h1><p class="muted">Find 6–10 companies similar in industry and business scale. Results include available revenue, valuation or employee estimates, plus source-backed reasons for each match.</p></div></section>
+<section class="wrap product-purpose" aria-label="Discovery purpose">
+    <div><strong>Discovery answers</strong><p>Which companies are similar in business category and scale? It returns a sourced peer list, not an operating report or deal-fit score.</p></div>
+    <div><strong>Need a business diagnosis?</strong><p>Use Business Insights for trends, competitors, operating risks, recommended actions and metrics.</p><a class="text-link" href="/owner">Open Business Insights →</a></div>
+</section>
 <section class="wrap panel discovery-command">
   <form id="discovery-form">
     <div class="two-col"><label>Reference company (optional)<input id="reference-company" placeholder="A company to use as a size and industry example"></label><label>Industry or sector<input id="sector" placeholder="e.g. Consumer packaged goods" required></label></div>
     <div class="two-col"><label>Geography<input id="geography" value="Canada" placeholder="Country or region"></label><label>Compare companies by<select id="size-metric"><option value="revenue">Annual revenue</option><option value="valuation">Estimated company valuation</option><option value="employees">Number of employees</option></select></label></div>
     <label>Comparable size<select id="size-band"></select></label>
-    <div class="discovery-actions"><p class="muted" id="discovery-help">Arc will look for companies with a similar scale and industry, and show the public evidence behind each match.</p><button class="button primary" id="refresh-shortlist" type="submit">Find comparable companies</button></div>
+    <div class="discovery-actions"><p class="muted" id="discovery-help">Discovery builds a comparable-company list; it does not produce an operating diagnosis or an acquisition-fit score.</p><button class="button primary" id="refresh-shortlist" type="submit">Find comparable companies</button></div>
   </form>
 </section>
-<section class="wrap" style="margin-bottom:80px"><div class="panel-head"><h2 id="results-heading">Comparable companies</h2><span class="muted" id="results-count"></span></div><div class="candidate-list" id="candidate-list"><div class="empty-state"><h3>Start with a company profile or industry</h3><p class="muted">Add an industry and optionally a reference company. Choose the size measure and range to find comparable businesses.</p></div></div></section>
+<section class="wrap" style="margin-bottom:80px"><div class="panel-head"><h2 id="results-heading">Comparable companies</h2><span class="muted" id="results-count"></span></div><div class="candidate-list" id="candidate-list"><div class="empty-state"><h3>Build a comparable-company list</h3><p class="muted">Add an industry and optionally a reference company. Choose a size measure and range. To understand a company’s business model, market trends or operating risks, use Business Insights.</p></div></div></section>
 {% endblock %}
 {% block scripts %}<script>
 (() => {
@@ -67,13 +71,15 @@
     list.innerHTML = '<div class="empty-state"><h3>Searching the market</h3><p class="muted">Arc is checking company profiles and public information for comparable scale and industry.</p></div>';
     try {
       const response = await fetch('/discovery/api/comparables', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(criteria)});
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || data.error || 'Could not find comparable companies.');
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || data.error || 'The discovery service did not return a usable response. Check provider availability and retry.');
       const result = {id:'discovery-' + Date.now(), created_at:new Date().toISOString(), criteria, comparables:data.comparables || []};
       await ArcStore.putDiscovery(result);
       showResults(result.comparables, criteria);
     } catch (error) {
-      list.innerHTML = `<div class="empty-state"><h3>Discovery could not be completed</h3><p class="muted">${esc(error.message)}</p></div>`;
+      const message = /fetch|network|load failed/i.test(error.message || '') ? 'Arc could not reach the research service. Your search criteria are still here; try again in a moment.' : (error.message || 'Arc could not find comparable companies.');
+      list.innerHTML = `<div class="empty-state"><h3>Discovery is temporarily unavailable</h3><p class="muted">${esc(message)}</p><button class="button secondary" type="button" data-retry-discovery>Try again</button><p class="muted">If this continues, check the Gemini API key, model setting, quota and provider status in Vercel.</p></div>`;
+      list.querySelector('[data-retry-discovery]')?.addEventListener('click', () => form.requestSubmit());
     } finally { button.disabled = false; button.textContent = 'Find comparable companies'; }
   });
   updateBands();

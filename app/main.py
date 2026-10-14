@@ -99,13 +99,15 @@ async def logout(request: Request):
 async def health():
     from app.config import missing_credentials, QLOO_BASE_URL, GEMINI_MODEL
     missing = missing_credentials()
+    providers = {
+        'gemini': 'configured' if 'GEMINI_API_KEY' not in missing else 'missing',
+        'qloo': 'configured' if 'QLOO_API_KEY' not in missing else 'missing',
+    }
     return {
-        'status': 'ok' if not missing else 'configuration_error',
+        'status': 'ok' if not missing else ('degraded' if any(v == 'configured' for v in providers.values()) else 'configuration_error'),
         'storage': 'browser IndexedDB; no server database',
         'gemini_model': GEMINI_MODEL,
         'qloo_base_url': QLOO_BASE_URL,
-        'credentials': {
-            'gemini': 'configured' if 'GEMINI_API_KEY' not in missing else 'missing',
-            'qloo': 'configured' if 'QLOO_API_KEY' not in missing else 'missing',
-        },
+        'credentials': providers,
+        'missing_credentials': missing,
     }

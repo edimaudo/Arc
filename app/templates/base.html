@@ -21,11 +21,11 @@
     </nav>
     <div class="header-tools">
       {% if request.session.get('user_id') %}<form class="logout-form" method="post" action="/logout"><button class="text-btn logout-btn" type="submit">Sign out</button></form>{% endif %}
-      <button class="text-btn tour-launch" type="button" data-tour-open>App tour</button>
-      <button class="text-btn" type="button" data-font="0.9" aria-label="Small text">A−</button>
+            <button class="text-btn" type="button" data-font="0.9" aria-label="Small text">A−</button>
       <button class="text-btn active" type="button" data-font="1" aria-label="Medium text">A</button>
       <button class="text-btn" type="button" data-font="1.15" aria-label="Large text">A+</button>
       <button class="icon-btn" type="button" id="theme-toggle" aria-label="Toggle theme">◐</button>
+      <button class="icon-btn tour-launch" type="button" data-tour-open aria-label="Open app tour" title="App tour">?</button>
     </div>
   </header>
   <main id="main">{% block content %}{% endblock %}</main>

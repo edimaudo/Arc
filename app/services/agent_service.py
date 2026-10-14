@@ -94,8 +94,8 @@ class ArcAgent:
                 "type": "function", "name": "find_potential_targets",
                 "description": "Run a grounded market search for companies that match sector, geography, and stated business criteria. Return real companies only.",
                 "parameters": {"type": "object", "properties": {
-                    "acquirer": {"type": "string"}, "sector": {"type": "string"}, "geography": {"type": "string"}, "thesis": {"type": "string"}
-                }, "required": ["acquirer", "sector", "geography", "thesis"]},
+                    "acquirer": {"type": "string"}, "sector": {"type": "string"}, "geography": {"type": "string"}, "business_criteria": {"type": "string"}
+                }, "required": ["acquirer", "sector", "geography", "business_criteria"]},
             },
             {
                 "type": "function", "name": "calculate_financial_fit",
@@ -133,6 +133,8 @@ class ArcAgent:
             tgt = await self.qloo_lookup_entities({"queries": [goal["target"]]})
             seed["acquirer"] = acq.get("entities", [])[:5]
             seed["target"] = tgt.get("entities", [])[:5]
+            seed["errors"].extend(acq.get("errors", []))
+            seed["errors"].extend(tgt.get("errors", []))
             a_ids = [x["entity_id"] for x in seed["acquirer"]]
             b_ids = [x["entity_id"] for x in seed["target"]]
             if a_ids and b_ids:
@@ -150,7 +152,7 @@ class ArcAgent:
         payload = {
             "model": self.model,
             "system_instruction": self._system_prompt(goal),
-            "input": "Investigate this M&A assignment. Decide which tools you need and continue until you have sufficient evidence for a defensible acquisition assessment.\n\nUSER GOAL:\n" + json.dumps(goal, ensure_ascii=False),
+            "input": "Investigate this M&A assignment using public-source research even when no documents are provided. Documents are optional supporting evidence, not a prerequisite. Always produce a useful report from verified public sources; when documents are provided, analyze them, reconcile them with public facts, and clearly flag conflicts or missing evidence. Do not invent company facts, scores, financial metrics, URLs or sources.\n\nUSER GOAL:\n" + json.dumps(goal, ensure_ascii=False),
             "tools": self.tool_declarations,
         }
         return await self._post_interaction(payload)
@@ -217,23 +219,9 @@ class ArcAgent:
             raise RuntimeError(self._interaction_error(latest))
         output = latest.get("output_text") or self._extract_output_text(latest)
         parsed = self._parse_json_object(output)
+        if not parsed:
+            raise RuntimeError('Gemini returned no valid structured M&A findings.')
         return self._normalize_result(output, parsed, activity)
-
-    async def ask(self, question: str, context: dict[str, Any]) -> str:
-        self._require_gemini()
-        payload = {
-            "model": self.model,
-            "system_instruction": (
-                "You are Arc, an M&A analyst. Answer the user's follow-up question using only the supplied investigation context. "
-                "You may use Qloo or Google Search tools if the existing evidence is insufficient. Do not invent facts. "
-                "Write concise analyst-grade prose and distinguish evidence from inference."
-            ),
-            "input": "INVESTIGATION CONTEXT:\n" + json.dumps(context, ensure_ascii=False)[:50000] + "\n\nQUESTION:\n" + question,
-            "tools": self.tool_declarations,
-        }
-        interaction = await self._post_interaction(payload)
-        result = await self._continue(interaction, max_turns=6)
-        return result.get("output") or "Arc did not return an answer."
 
     async def _web_search_json(self, prompt: str) -> dict[str, Any]:
         self._require_gemini()
@@ -348,7 +336,7 @@ class ArcAgent:
             "Use Google Search grounding. Prefer candidates with a verifiable public footprint and enough public financial information to screen. "
             "Return JSON only: {candidates:[{name, sector, geography, rationale, website, public_or_private, financial_data_available}]}. "
             "Do not invent companies, facts or URLs.\n"
-            f"ACQUIRER: {args['acquirer']}\nSECTOR: {args['sector']}\nGEOGRAPHY: {args['geography']}\nBUSINESS CRITERIA: {args.get('business_criteria', args.get('thesis', ''))}"
+            f"ACQUIRER: {args['acquirer']}\nSECTOR: {args['sector']}\nGEOGRAPHY: {args['geography']}\nBUSINESS CRITERIA: {args.get('business_criteria', '')}"
         )
         search = await self._web_search_json(prompt)
         return {"acquirer": args["acquirer"], "criteria": args, "candidates": search["data"].get("candidates", []), "search_activity": search["steps"]}
@@ -409,7 +397,7 @@ class ArcAgent:
         overall = round(sum(float(scores[k]) * weights[k] for k in keys))
         return {"overall_fit": overall, "components": {k: round(float(scores[k])) for k in keys}, "weights": weights, "status": "complete"}
 
-    async def screen_target(self, acquirer: str, candidate: dict[str, Any], thesis: str) -> dict[str, Any]:
+    async def screen_target(self, acquirer: str, candidate: dict[str, Any], business_criteria: str) -> dict[str, Any]:
         """Research + Qloo-screen one discovered target and return an explainable score set."""
         target_name = str(candidate.get("name", "")).strip()
         if not target_name:
@@ -417,7 +405,7 @@ class ArcAgent:
         research = await self.search_company_information({
             "company": target_name,
             "questions": [
-                f"How does this company fit the stated business criteria: {thesis}?",
+                f"How does this company fit the stated business criteria: {business_criteria}?",
                 "What are the company's brands, products and audience?",
                 "What financial metrics are publicly disclosed?",
             ],
@@ -440,7 +428,7 @@ class ArcAgent:
                 "filter_types": ["urn:entity:brand", "urn:entity:place", "urn:entity:artist"],
                 "model": "predictive",
             })
-        strategic = await self._score_strategy(acquirer, target_name, thesis, acq_research, research)
+        strategic = await self._score_strategy(acquirer, target_name, business_criteria, acq_research, research)
         cultural = self._qloo_score(compare)
         audience = self._audience_expansion_score(compare)
         financial = await self.calculate_financial_fit({"metrics": research.get("financial_metrics") or {}})
@@ -466,11 +454,11 @@ class ArcAgent:
             "financial_detail": financial,
         }
 
-    async def _score_strategy(self, acquirer: str, target: str, thesis: str, acq: dict[str, Any], tgt: dict[str, Any]) -> int:
+    async def _score_strategy(self, acquirer: str, target: str, business_criteria: str, acq: dict[str, Any], tgt: dict[str, Any]) -> int:
         prompt = (
             "Return JSON only: {strategic_fit: number, rationale: string}. Score 0-100 for strategic acquisition fit based strictly on the supplied evidence. "
-            "Do not invent facts. Consider product adjacency, customer overlap/complementarity, geography, competitive position and thesis fit.\n"
-            f"ACQUIRER: {acquirer}\nTARGET: {target}\nBUSINESS CRITERIA: {thesis}\nACQUIRER EVIDENCE:\n{json.dumps(acq, ensure_ascii=False)[:16000]}\nTARGET EVIDENCE:\n{json.dumps(tgt, ensure_ascii=False)[:16000]}"
+            "Do not invent facts. Consider product adjacency, customer overlap/complementarity, geography, competitive position and stated business criteria.\n"
+            f"ACQUIRER: {acquirer}\nTARGET: {target}\nBUSINESS CRITERIA: {business_criteria}\nACQUIRER EVIDENCE:\n{json.dumps(acq, ensure_ascii=False)[:16000]}\nTARGET EVIDENCE:\n{json.dumps(tgt, ensure_ascii=False)[:16000]}"
         )
         result = await self._post_interaction({"model": self.model, "input": prompt, "response_format": {"type": "text", "mime_type": "application/json", "schema": {"type": "object", "properties": {"strategic_fit": {"type": "number"}, "rationale": {"type": "string"}}, "required": ["strategic_fit", "rationale"]}}})
         parsed = self._parse_json_object(result.get("output_text") or self._extract_output_text(result)) or {}
@@ -597,20 +585,43 @@ class ArcAgent:
 
     async def _post_interaction(self, payload: dict[str, Any]) -> dict[str, Any]:
         url = "https://generativelanguage.googleapis.com/v1beta/interactions"
-        try:
-            async with httpx.AsyncClient(timeout=GEMINI_TIMEOUT_SECONDS) as client:
-                response = await client.post(url, headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"}, json=payload)
-            if response.status_code >= 400:
-                body = response.text[:1600]
-                raise RuntimeError(f"Gemini request failed ({response.status_code}): {body}")
-            data = response.json()
-            if data.get("status") == "failed":
-                raise RuntimeError(self._interaction_error(data))
-            return data
-        except httpx.TimeoutException as exc:
-            raise RuntimeError(f"Gemini request timed out after {GEMINI_TIMEOUT_SECONDS:.0f}s.") from exc
-        except httpx.HTTPError as exc:
-            raise RuntimeError(f"Gemini network request failed: {exc}") from exc
+        last_network_error: Exception | None = None
+        # One short retry helps with transient gateway/network errors without hiding quota or auth failures.
+        for attempt in range(2):
+            try:
+                async with httpx.AsyncClient(timeout=GEMINI_TIMEOUT_SECONDS) as client:
+                    response = await client.post(url, headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"}, json=payload)
+                if response.status_code in {500, 502, 503, 504} and attempt == 0:
+                    await asyncio.sleep(0.5)
+                    continue
+                if response.status_code == 429:
+                    raise RuntimeError("Gemini API rate limit or quota exceeded (429).")
+                if response.status_code in {401, 403}:
+                    raise RuntimeError(f"Gemini API rejected credentials or permissions ({response.status_code}).")
+                if response.status_code == 404:
+                    raise RuntimeError(f"Gemini model or Interactions API endpoint not found (404); configured model: {self.model}.")
+                if response.status_code >= 400:
+                    detail = ""
+                    try:
+                        body = response.json()
+                        detail = str((body.get("error") or {}).get("message") or body.get("message") or "")
+                    except Exception:
+                        detail = response.text[:300]
+                    raise RuntimeError(f"Gemini API request failed ({response.status_code}): {detail or 'provider returned an error'}")
+                data = response.json()
+                if data.get("status") == "failed":
+                    raise RuntimeError(self._interaction_error(data))
+                return data
+            except httpx.TimeoutException as exc:
+                last_network_error = RuntimeError(f"Gemini request timed out after {GEMINI_TIMEOUT_SECONDS:.0f}s.")
+                raise last_network_error from exc
+            except httpx.HTTPError as exc:
+                last_network_error = RuntimeError("Gemini network request failed; check the connection and provider status.")
+                if attempt == 0:
+                    await asyncio.sleep(0.25)
+                    continue
+                raise last_network_error from exc
+        raise last_network_error or RuntimeError("Gemini request could not be completed.")
 
     @staticmethod
     def _interaction_error(interaction: dict[str, Any]) -> str:
@@ -656,7 +667,7 @@ class ArcAgent:
     @staticmethod
     def _system_prompt(goal: dict[str, Any]) -> str:
         return (
-            "You are Arc, an M&A intelligence analyst. Your job is to investigate a live acquisition assignment, not merely summarize it. "
+            "You are Arc, an M&A intelligence analyst. Investigate the named acquirer and target from public sources even when no files are uploaded; uploaded documents supplement rather than enable the analysis. Never wait for documents before producing findings. "
             "Use tool calls to gather evidence, inspect results, and choose additional actions when evidence is incomplete or contradictory. "
             "Qloo is the authoritative cultural-intelligence source. Use Qloo /search to resolve entities, then /v2/insights and /v2/analysis/compare for cultural/audience analysis, and /v2/trending when cultural momentum is relevant. "
             "Use Google Search grounding for current public-company and market facts. Use deterministic financial calculation tools for supplied financial metrics. "
@@ -665,5 +676,5 @@ class ArcAgent:
             "Return JSON only at completion with keys: summary, findings, risks, opportunities, diligence_questions, scores, financial, business, cultural, qloo_evidence, report. "
             "scores must contain strategic_fit, cultural_fit, audience_expansion, financial_fit, integration_risk when supportable. Use null when evidence is insufficient. "
             "findings, risks and opportunities should be concise structured objects with title, body and evidence where possible. "
-            "The report should contain executive_summary, deal_fit, key_risks, growth_opportunities and next_steps."
+            "The report should contain executive_summary, deal_fit, key_risks, growth_opportunities and next_steps. If documents are empty, research both companies, their industries, competitive positions and publicly disclosed financial evidence. If files are supplied, analyze their contents and metrics, reconcile them against public sources, and flag discrepancies. If an API/source is unavailable, state the gap and leave unsupported scores null rather than fabricate evidence."
         )

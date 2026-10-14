@@ -7,15 +7,14 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import MAX_DOCUMENT_BYTES, MAX_DOCUMENTS_PER_ANALYSIS
 from app.services.analysis_service import create_analysis, run_investigation
-from app.services.agent_service import ArcAgent
 from app.services.document_service import parse_document
 from app.services.report_service import build_report_pdf
+from app.services.api_errors import friendly_api_error
 from app.auth import require_authenticated
 
 logger = logging.getLogger(__name__)
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / 'templates'))
 router = APIRouter(prefix='/analysis', tags=['analysis'], dependencies=[Depends(require_authenticated)])
-_agent = ArcAgent()
 
 
 @router.get('/new')
@@ -90,24 +89,7 @@ async def run_analysis(request: Request, analysis_id: str):
         return JSONResponse({'error': str(exc), 'status': 'Investigation failed'}, status_code=400)
     except Exception as exc:
         logger.exception('Arc investigation failed')
-        return JSONResponse({'error': str(exc), 'status': 'Investigation failed'}, status_code=502)
-
-
-@router.post('/{analysis_id}/ask')
-async def ask_arc(request: Request, analysis_id: str):
-    try:
-        payload = await request.json()
-        if not isinstance(payload, dict):
-            return JSONResponse({'error': 'A question and analysis context are required.'}, status_code=400)
-        question = str(payload.get('question') or '').strip()
-        analysis = payload.get('analysis')
-        if not question or not isinstance(analysis, dict) or analysis.get('analysis_id') != analysis_id:
-            return JSONResponse({'error': 'A question and saved analysis are required.'}, status_code=400)
-        answer = await _agent.ask(question, analysis)
-        return {'answer': answer}
-    except Exception as exc:
-        logger.exception('Ask Arc request failed')
-        return JSONResponse({'error': str(exc)}, status_code=502)
+        return JSONResponse({'error': friendly_api_error(exc, 'Live research service'), 'status': 'Investigation failed', 'retryable': True}, status_code=503)
 
 
 @router.post('/{analysis_id}/report.pdf')

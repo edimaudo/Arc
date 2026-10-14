@@ -482,22 +482,30 @@ input, select, textarea { border-radius: 3px; min-height: 46px; }
 .source-links { display: flex; flex-wrap: wrap; gap: 8px 18px; border-top: 1px solid var(--line); padding-top: 13px; font-size: .82rem; }
 .source-links strong { color: var(--muted); font-weight: 500; }
 .source-links a { max-width: 100%; overflow-wrap: anywhere; }
-.tour-launch { white-space: nowrap; }
+.tour-launch { flex: 0 0 auto; width: 36px; min-width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 50%; display: inline-grid; place-items: center; font-weight: 600; }
 .tour-panel { padding: 26px; }
 .tour-panel h2 { font-size: 1.65rem; line-height: 1.2; margin: 22px 0 12px; }
 .tour-panel > p { min-height: 96px; max-width: 56ch; color: var(--muted); }
 .tour-progress { color: var(--muted); font-size: .82rem; }
 .tour-progress-track { height: 3px; background: var(--soft); overflow: hidden; }
 .tour-progress-track span { display: block; height: 100%; background: var(--accent); transition: width .15s ease; }
-.tour-controls { display: flex; justify-content: space-between; gap: 14px; align-items: center; margin-top: 20px; }
-.tour-controls .hero-actions { flex-wrap: nowrap; }
-.tour-controls .button { white-space: nowrap; }
+.tour-controls { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 12px; align-items: center; margin-top: 20px; }
+.tour-controls .hero-actions { display: flex; flex-wrap: nowrap; justify-content: flex-end; gap: 8px; margin-top: 0; }
+.tour-controls .button { white-space: nowrap; padding-left: 12px; padding-right: 12px; }
 #arc-tour { max-width: 100%; }
 #arc-tour::backdrop { background: rgba(10,12,10,.56); backdrop-filter: blur(2px); }
 @media (max-width: 760px) {
   .comparable-facts { grid-template-columns: 1fr; }
   .business-report-head { align-items: flex-start; flex-direction: column; }
-  .tour-controls { align-items: stretch; flex-direction: column-reverse; }
-  .tour-controls > .button { align-self: flex-start; }
-  .tour-controls .hero-actions { justify-content: flex-end; }
+  .tour-controls { grid-template-columns: max-content minmax(0, 1fr); gap: 8px; }
+  .tour-controls .button { min-height: 42px; padding-left: 9px; padding-right: 9px; font-size: .82rem; }
+  .tour-controls .hero-actions { gap: 6px; }
 }
+
+
+/* Explicitly distinguish operating research from peer-company discovery. */
+.product-purpose { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin-top: -8px; margin-bottom: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.product-purpose > div { min-width: 0; }
+.product-purpose strong { display: block; margin-bottom: 6px; font-weight: 600; }
+.product-purpose p { margin: 0 0 8px; color: var(--muted); line-height: 1.6; }
+@media (max-width: 640px) { .product-purpose { grid-template-columns: 1fr; gap: 16px; } }

@@ -15,7 +15,6 @@
   <header class="site-header public-header">
     <a class="wordmark" href="/" aria-label="Arc home">ARC</a>
     <div class="public-header-actions">
-      <button class="text-btn tour-launch" type="button" data-tour-open>App tour</button>
       {% if request.session.get('user_id') %}
       <a class="sign-in-link" href="/dashboard">Open workspace</a>
     {% else %}
@@ -26,6 +25,7 @@
         <button class="text-btn active" type="button" data-font="1" aria-label="Medium text">A</button>
         <button class="text-btn" type="button" data-font="1.15" aria-label="Large text">A+</button>
         <button class="icon-btn" type="button" id="theme-toggle" aria-label="Toggle theme">◐</button>
+        <button class="icon-btn tour-launch" type="button" data-tour-open aria-label="Open app tour" title="App tour">?</button>
       </div>
     </div>
   </header>

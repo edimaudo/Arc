@@ -1,6 +1,7 @@
 import asyncio
 import os
 import unittest
+from unittest.mock import AsyncMock
 
 os.environ['GEMINI_API_KEY'] = 'unit-test'
 os.environ['QLOO_API_KEY'] = 'unit-test'
@@ -39,6 +40,29 @@ class CoreTests(unittest.TestCase):
         result = explain_score({'strategic_fit': 80, 'cultural_fit': 90, 'audience_expansion': 70, 'financial_fit': 60})
         self.assertEqual(result['overall_fit'], 77)
         self.assertEqual(result['components']['cultural_fit'], 90)
+
+    def test_first_pass_mna_research_uses_one_grounded_gemini_request(self):
+        agent = ArcAgent()
+        agent._require_gemini = lambda: None
+        agent._web_search_json = AsyncMock(return_value={
+            'data': {
+                'summary': 'Preliminary assessment.',
+                'findings': [{'type': 'Finding', 'title': 'Market position', 'body': 'Research-backed observation.', 'evidence': 'Public sources'}],
+                'risks': [], 'opportunities': [], 'diligence_questions': [], 'scores': {},
+                'financial': {}, 'business': {}, 'cultural': {}, 'qloo_evidence': {},
+                'report': {'executive_summary': 'Preliminary assessment.'},
+            },
+            'steps': [{'tool': 'google_search', 'status': 'complete'}],
+        })
+        agent._seed_qloo_context = AsyncMock(return_value={
+            'acquirer': [], 'target': [], 'comparison': {}, 'errors': ['Qloo unavailable']
+        })
+        result = asyncio.run(agent.run({'acquirer': 'Buyer Co', 'target': 'Target Co', 'documents': []}))
+        self.assertEqual(agent._web_search_json.await_count, 1)
+        self.assertEqual(agent._seed_qloo_context.await_count, 1)
+        prompt = agent._web_search_json.await_args.args[0]
+        self.assertIn('If none are present, research both companies anyway.', prompt)
+        self.assertEqual(result['findings'][0]['title'], 'Market position')
 
     def test_document_metrics(self):
         data = b'revenue growth,12%\nebitda margin,22%\nnet debt / ebitda,1.8\ncustomer concentration,24%\n'

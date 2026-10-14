@@ -93,6 +93,14 @@ class IntegrationTests(unittest.TestCase):
             self.assertNotIn('strategic_fit', peer)
         finally:
             discovery._agent = original
+        original = discovery._agent
+        discovery._agent = DiscoveryStub()
+        try:
+            response = self.client.post('/discovery/api/comparables', json={'reference_company': 'Example Co'})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()['criteria']['reference_company'], 'Example Co')
+        finally:
+            discovery._agent = original
 
     def test_business_insights_shows_actionable_provider_error(self):
         class UnavailableInsights:
@@ -248,12 +256,14 @@ class IntegrationTests(unittest.TestCase):
         response = client.post('/discovery/api/comparables', json={'sector': 'Retail'})
         self.assertEqual(response.status_code, 401)
 
-    def test_single_demo_account_not_signup(self):
+    def test_single_demo_account_uses_normal_signin_fields(self):
         page = TestClient(app, follow_redirects=False).get('/login')
         self.assertEqual(page.status_code, 200)
-        self.assertIn(DEMO_EMAIL, page.text)
-        self.assertIn(DEMO_PASSWORD, page.text)
-        self.assertIn('Continue with demo account', page.text)
+        self.assertIn('name="email"', page.text)
+        self.assertIn('name="password"', page.text)
+        self.assertNotIn(DEMO_EMAIL, page.text)
+        self.assertNotIn(DEMO_PASSWORD, page.text)
+        self.assertNotIn('Continue with demo account', page.text)
         signup = self.client.get('/signup')
         self.assertEqual(signup.status_code, 303)
 

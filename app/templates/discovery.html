@@ -8,10 +8,10 @@
 </section>
 <section class="wrap panel discovery-command">
   <form id="discovery-form">
-    <div class="two-col"><label>Reference company (optional)<input id="reference-company" placeholder="A company to use as a size and industry example"></label><label>Industry or sector<input id="sector" placeholder="e.g. Consumer packaged goods" required></label></div>
+    <div class="two-col"><label>Reference company (optional)<input id="reference-company" placeholder="A company to use as a size and industry example"></label><label>Industry or sector<input id="sector" placeholder="e.g. Consumer packaged goods"></label></div>
     <div class="two-col"><label>Geography<input id="geography" value="Canada" placeholder="Country or region"></label><label>Compare companies by<select id="size-metric"><option value="revenue">Annual revenue</option><option value="valuation">Estimated company valuation</option><option value="employees">Number of employees</option></select></label></div>
     <label>Comparable size<select id="size-band"></select></label>
-    <div class="discovery-actions"><p class="muted" id="discovery-help">Discovery builds a comparable-company list; it does not produce an operating diagnosis or an acquisition-fit score.</p><button class="button primary" id="refresh-shortlist" type="submit">Find comparable companies</button></div>
+    <div class="discovery-actions"><p class="muted" id="discovery-help">Discovery uses your latest company context when available, or you can enter a reference company or industry.</p><button class="button primary" id="refresh-shortlist" type="submit">Find comparable companies</button></div>
   </form>
 </section>
 <section class="wrap" style="margin-bottom:80px"><div class="panel-head"><h2 id="results-heading">Comparable companies</h2><span class="muted" id="results-count"></span></div><div class="candidate-list" id="candidate-list"><div class="empty-state"><h3>Build a comparable-company list</h3><p class="muted">Add an industry and optionally a reference company. Choose a size measure and range. To understand a company’s business model, market trends or operating risks, use Business Insights.</p></div></div></section>
@@ -24,6 +24,7 @@
   const button = document.getElementById('refresh-shortlist');
   const list = document.getElementById('candidate-list');
   const count = document.getElementById('results-count');
+  let sourceContextId = '';
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const bands = {
     revenue: ['Any size', 'Under $10 million', '$10 million–$50 million', '$50 million–$250 million', '$250 million–$1 billion', '$1 billion or more'],
@@ -66,14 +67,17 @@
       size_metric: metric.value,
       size_band: band.value
     };
-    if (!criteria.sector) return;
+    if (!criteria.sector && !criteria.reference_company) {
+      list.innerHTML = '<div class="empty-state"><h3>Add a reference company or industry</h3><p class="muted">Arc can infer the industry from a reference company, or use the sector you enter.</p></div>';
+      return;
+    }
     button.disabled = true; button.textContent = 'Researching companies…'; count.textContent = '';
     list.innerHTML = '<div class="empty-state"><h3>Searching the market</h3><p class="muted">Arc is checking company profiles and public information for comparable scale and industry.</p></div>';
     try {
       const response = await fetch('/discovery/api/comparables', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(criteria)});
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.detail || data.error || 'The discovery service did not return a usable response. Check provider availability and retry.');
-      const result = {id:'discovery-' + Date.now(), created_at:new Date().toISOString(), criteria, comparables:data.comparables || []};
+      const result = {id:'discovery-' + Date.now(), created_at:new Date().toISOString(), source_context_id:sourceContextId || null, criteria, comparables:data.comparables || []};
       await ArcStore.putDiscovery(result);
       showResults(result.comparables, criteria);
     } catch (error) {
@@ -83,17 +87,55 @@
     } finally { button.disabled = false; button.textContent = 'Find comparable companies'; }
   });
   updateBands();
+  function fillCriteria(criteria) {
+    document.getElementById('reference-company').value = criteria.reference_company || '';
+    document.getElementById('sector').value = criteria.sector || '';
+    document.getElementById('geography').value = criteria.geography || 'Canada';
+    metric.value = criteria.size_metric || 'revenue';
+    updateBands(criteria.size_band || 'Any size');
+  }
+  form.querySelectorAll('input, select').forEach(el => {
+    el.addEventListener('input', () => { sourceContextId = ''; });
+    el.addEventListener('change', () => { sourceContextId = ''; });
+  });
   (async () => {
     try {
-      const saved = (await ArcStore.allDiscoveries())[0];
-      if (!saved) return;
-      const criteria = saved.criteria || saved;
-      document.getElementById('reference-company').value = criteria.reference_company || '';
-      document.getElementById('sector').value = criteria.sector || '';
-      document.getElementById('geography').value = criteria.geography || 'Canada';
-      metric.value = criteria.size_metric || 'revenue'; updateBands(criteria.size_band || 'Any size');
-      showResults(saved.comparables || [], criteria);
-    } catch (error) { console.warn('Previous discovery could not be restored.'); }
+      const [analyses, discoveries, insights] = await Promise.all([
+        ArcStore.allAnalyses(), ArcStore.allDiscoveries(), ArcStore.allInsights()
+      ]);
+      const latestAnalysis = analyses[0];
+      const latestDiscovery = discoveries[0];
+      const latestInsight = insights[0];
+      if (latestAnalysis) {
+        sourceContextId = `analysis:${latestAnalysis.analysis_id}`;
+        const criteria = {
+          reference_company: latestAnalysis.target || latestAnalysis.acquirer || '',
+          sector: latestAnalysis.business?.sector || latestAnalysis.sector || latestAnalysis.report?.sector || '',
+          geography: latestAnalysis.geography || 'Canada', size_metric: 'revenue', size_band: 'Any size'
+        };
+        fillCriteria(criteria);
+        const existing = discoveries.find(item => item.source_context_id === sourceContextId);
+        if (existing) showResults(existing.comparables || [], existing.criteria || criteria);
+        else if (criteria.reference_company || criteria.sector) form.requestSubmit();
+        return;
+      }
+      if (latestInsight) {
+        const priorCriteria = latestInsight.criteria || {};
+        sourceContextId = `insight:${latestInsight.id}`;
+        const criteria = {reference_company:priorCriteria.company || '', sector:priorCriteria.sector || '', geography:priorCriteria.geography || 'Canada', size_metric:'revenue', size_band:'Any size'};
+        fillCriteria(criteria);
+        const existing = discoveries.find(item => item.source_context_id === sourceContextId);
+        if (existing) showResults(existing.comparables || [], existing.criteria || criteria);
+        else if (criteria.reference_company || criteria.sector) form.requestSubmit();
+        return;
+      }
+      if (latestDiscovery) {
+        sourceContextId = latestDiscovery.source_context_id || '';
+        const criteria = latestDiscovery.criteria || latestDiscovery;
+        fillCriteria(criteria);
+        showResults(latestDiscovery.comparables || [], criteria);
+      }
+    } catch (error) { console.warn('Previous company context could not be restored.'); }
   })();
 })();
 </script>{% endblock %}

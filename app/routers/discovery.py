@@ -27,10 +27,11 @@ async def comparable_companies_api(request: Request):
     if not isinstance(payload, dict):
         payload = {}
     sector = str(payload.get('sector') or '').strip()
-    if not sector:
-        raise HTTPException(status_code=400, detail='Industry or sector is required.')
+    reference_company = str(payload.get('reference_company') or '').strip()
+    if not sector and not reference_company:
+        raise HTTPException(status_code=400, detail='Enter a reference company or an industry/sector.')
     criteria = {
-        'reference_company': str(payload.get('reference_company') or '').strip(),
+        'reference_company': reference_company,
         'sector': sector,
         'geography': str(payload.get('geography') or 'Canada').strip() or 'Canada',
         'size_metric': str(payload.get('size_metric') or 'revenue').strip(),

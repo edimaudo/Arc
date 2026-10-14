@@ -21,48 +21,94 @@
   const form = document.getElementById('business-insights-form');
   const button = document.getElementById('run-business-insights');
   const root = document.getElementById('business-insights-results');
+  let sourceContextId = '';
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const array = v => Array.isArray(v) ? v : [];
   function textItem(item) { return typeof item === 'string' ? item : (item?.detail || item?.summary || item?.reason || item?.description || item?.action || ''); }
   function listPanel(title, values) {
-    if (!values.length) return '';
-    return `<section class="panel insight-panel"><h2>${title}</h2><div class="insight-list">${values.map(v => typeof v === 'string' ? `<p>${esc(v)}</p>` : `<article><h3>${esc(v.title || v.name || v.priority || v.action || v.metric || '')}</h3><p>${esc(textItem(v))}</p>${v.reason ? `<p class="muted">${esc(v.reason)}</p>` : ''}${v.website && /^https?:\/\//i.test(v.website) ? `<a class="text-link" href="${esc(v.website)}" target="_blank" rel="noopener noreferrer">Website ↗</a>` : ''}</article>`).join('')}</div></section>`;
+    const body = values.length
+      ? `<div class="insight-list">${values.map(v => typeof v === 'string' ? `<p>${esc(v)}</p>` : `<article><h3>${esc(v.title || v.name || v.priority || v.action || v.metric || 'Observation')}</h3><p>${esc(textItem(v) || 'No supporting detail was returned.')}</p>${v.reason ? `<p class="muted">${esc(v.reason)}</p>` : ''}${v.website && /^https?:\/\//i.test(v.website) ? `<a class="text-link" href="${esc(v.website)}" target="_blank" rel="noopener noreferrer">Website ↗</a>` : ''}</article>`).join('')}</div>`
+      : '<p class="muted">No verified findings were returned for this section. Review the linked sources or run the research again.</p>';
+    return `<section class="panel insight-panel"><h2>${title}</h2>${body}</section>`;
   }
   function sourcePanel(sources) {
     const links = array(sources).filter(s => typeof s?.url === 'string' && /^https?:\/\//i.test(s.url)).slice(0,12);
-    return links.length ? `<section class="panel insight-panel"><h2>Sources</h2><ul class="source-list">${links.map(s => `<li><a class="text-link" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)} ↗</a></li>`).join('')}</ul></section>` : '';
+    const content = links.length ? `<ul class="source-list">${links.map(s => `<li><a class="text-link" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)} ↗</a></li>`).join('')}</ul>` : '<p class="muted">No source links were returned. Treat unsourced claims as unverified.</p>';
+    return `<section class="panel insight-panel"><h2>Sources</h2>${content}</section>`;
   }
   function render(report, criteria, savedAt) {
     const competitors = array(report.competitive_landscape);
     const overview = report.business_overview || report.summary || '';
-    root.innerHTML = `<div class="business-report-head"><div><h2>${esc(report.company || criteria.company || criteria.sector || 'Business overview')}</h2><p class="muted">${esc(report.sector || criteria.sector || 'Industry research')}${(report.geography || criteria.geography) ? ' · ' + esc(report.geography || criteria.geography) : ''}</p></div><span class="status">Research report</span></div>${overview ? `<section class="panel insight-panel"><h2>Business overview</h2><p>${esc(overview)}</p>${report.business_model ? `<p><strong>Business model:</strong> ${esc(report.business_model)}</p>` : ''}${report.market_position ? `<p><strong>Market position:</strong> ${esc(report.market_position)}</p>` : ''}</section>` : ''}${listPanel('Market trends', array(report.current_trends))}${competitors.length ? `<section class="panel insight-panel"><h2>Competitive landscape</h2><div class="insight-list">${competitors.map(c => `<article><h3>${esc(c.name || 'Competitor')}</h3><p>${esc(c.summary || c.detail || '')}</p>${c.website && /^https?:\/\//i.test(c.website) ? `<a class="text-link" href="${esc(c.website)}" target="_blank" rel="noopener noreferrer">Website ↗</a>` : ''}</article>`).join('')}</div></section>` : ''}${listPanel('Customer and product signals', array(report.customer_and_product_signals))}${listPanel('Growth opportunities', array(report.growth_opportunities))}${listPanel('Business risks', array(report.business_risks))}${listPanel('Recommended actions', array(report.recommended_actions))}${listPanel('Metrics to monitor', array(report.key_metrics_to_watch))}${sourcePanel(report.sources)}<p class="muted report-timestamp">Research completed ${esc(savedAt || '')}. Verify material claims with the linked sources before relying on them.</p>`;
+    const competitorBody = competitors.length
+      ? `<div class="insight-list">${competitors.map(c => `<article><h3>${esc(c.name || 'Competitor')}</h3><p>${esc(c.summary || c.detail || 'No public summary was returned.')}</p>${c.website && /^https?:\/\//i.test(c.website) ? `<a class="text-link" href="${esc(c.website)}" target="_blank" rel="noopener noreferrer">Website ↗</a>` : ''}</article>`).join('')}</div>`
+      : '<p class="muted">No competitors could be verified in the returned results. Review the source list or retry.</p>';
+    root.innerHTML = `<div class="business-report-head"><div><h2>${esc(report.company || criteria.company || criteria.sector || 'Business overview')}</h2><p class="muted">${esc(report.sector || criteria.sector || 'Industry research')}${(report.geography || criteria.geography) ? ' · ' + esc(report.geography || criteria.geography) : ''}</p></div><span class="status">Research report</span></div><section class="panel insight-panel"><h2>Business overview</h2><p>${esc(overview || 'No verified overview was returned. Use the source links below to validate company details, or retry research.')}</p>${report.business_model ? `<p><strong>Business model:</strong> ${esc(report.business_model)}</p>` : ''}${report.market_position ? `<p><strong>Market position:</strong> ${esc(report.market_position)}</p>` : ''}</section>${listPanel('Market trends', array(report.current_trends))}<section class="panel insight-panel"><h2>Competitive landscape</h2>${competitorBody}</section>${listPanel('Customer and product signals', array(report.customer_and_product_signals))}${listPanel('Growth opportunities', array(report.growth_opportunities))}${listPanel('Business risks', array(report.business_risks))}${listPanel('Recommended actions', array(report.recommended_actions))}${listPanel('Metrics to monitor', array(report.key_metrics_to_watch))}${sourcePanel(report.sources)}<p class="muted report-timestamp">Research completed ${esc(savedAt || '')}. Verify material claims with the linked sources before relying on them.</p>`;
   }
-  async function restore() {
-    try {
-      const saved = (await ArcStore.allInsights())[0];
-      if (saved) render(saved.insights || {}, saved.criteria || {}, new Date(saved.created_at).toLocaleString());
-    } catch (error) { console.warn('Previous business report could not be restored.'); }
-  }
-  form.addEventListener('submit', async event => {
-    event.preventDefault();
-    const criteria = {company:document.getElementById('insight-company').value.trim(), sector:document.getElementById('insight-sector').value.trim(), geography:document.getElementById('insight-geography').value.trim() || 'Canada', focus:document.getElementById('insight-focus').value};
-    if (!criteria.company && !criteria.sector) { root.innerHTML = '<div class="empty-state"><h2>Add a company or industry</h2><p class="muted">At least one is required to begin research.</p></div>'; return; }
+  async function research(criteria, contextId = '') {
+    if (!criteria.company && !criteria.sector) {
+      root.innerHTML = '<div class="empty-state"><h2>Add a company or industry</h2><p class="muted">At least one is required to begin research.</p></div>';
+      return;
+    }
     button.disabled = true; button.textContent = 'Researching…';
     root.innerHTML = '<div class="empty-state"><h2>Researching the business</h2><p class="muted">Arc is reviewing public company information and market sources.</p></div>';
     try {
       const response = await fetch('/owner/api/insights', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(criteria)});
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.detail || data.error || 'The business research service did not return a usable response. Check provider availability and retry.');
-      const saved = {id:'insight-' + Date.now(), created_at:new Date().toISOString(), criteria, insights:data.insights || {}};
+      const saved = {id:'insight-' + Date.now(), created_at:new Date().toISOString(), source_context_id:contextId || null, criteria, insights:data.insights || {}};
       await ArcStore.putInsight(saved);
       render(saved.insights, criteria, new Date(saved.created_at).toLocaleString());
     } catch (error) {
       const message = /fetch|network|load failed/i.test(error.message || '') ? 'Arc could not reach the research service. Your entered criteria are still here; try again in a moment.' : (error.message || 'Arc could not complete business research.');
       root.innerHTML = `<div class="empty-state"><h2>Business research is temporarily unavailable</h2><p class="muted">${esc(message)}</p><button class="button secondary" type="button" data-retry-business>Try again</button><p class="muted">If this continues, check the Gemini API key, model setting, quota and provider status in Vercel.</p></div>`;
       root.querySelector('[data-retry-business]')?.addEventListener('click', () => form.requestSubmit());
-    }
-    finally { button.disabled = false; button.textContent = 'Research business'; }
+    } finally { button.disabled = false; button.textContent = 'Research business'; }
+  }
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const criteria = {company:document.getElementById('insight-company').value.trim(), sector:document.getElementById('insight-sector').value.trim(), geography:document.getElementById('insight-geography').value.trim() || 'Canada', focus:document.getElementById('insight-focus').value};
+    await research(criteria, sourceContextId);
   });
+  form.querySelectorAll('input, select').forEach(el => {
+    el.addEventListener('input', () => { sourceContextId = ''; });
+    el.addEventListener('change', () => { sourceContextId = ''; });
+  });
+  async function restore() {
+    try {
+      const [savedReports, analyses, discoveries] = await Promise.all([ArcStore.allInsights(), ArcStore.allAnalyses(), ArcStore.allDiscoveries()]);
+      const saved = savedReports[0];
+      const latestAnalysis = analyses[0];
+      if (latestAnalysis) {
+        sourceContextId = `analysis:${latestAnalysis.analysis_id}`;
+        const criteria = {company:latestAnalysis.target || latestAnalysis.acquirer || '', sector:latestAnalysis.business?.sector || latestAnalysis.sector || latestAnalysis.report?.sector || '', geography:latestAnalysis.geography || 'Canada', focus:'Overall business'};
+        document.getElementById('insight-company').value = criteria.company;
+        document.getElementById('insight-sector').value = criteria.sector;
+        document.getElementById('insight-geography').value = criteria.geography;
+        if (saved?.source_context_id === sourceContextId) render(saved.insights || {}, saved.criteria || criteria, new Date(saved.created_at).toLocaleString());
+        else if (criteria.company || criteria.sector) await research(criteria, sourceContextId);
+        return;
+      }
+      const latestDiscovery = discoveries[0];
+      if (latestDiscovery) {
+        const old = latestDiscovery.criteria || {};
+        sourceContextId = `discovery:${latestDiscovery.id}`;
+        const criteria = {company:old.reference_company || latestDiscovery.comparables?.[0]?.name || '', sector:old.sector || latestDiscovery.comparables?.[0]?.sector || '', geography:old.geography || 'Canada', focus:'Overall business'};
+        document.getElementById('insight-company').value = criteria.company;
+        document.getElementById('insight-sector').value = criteria.sector;
+        document.getElementById('insight-geography').value = criteria.geography;
+        if (saved?.source_context_id === sourceContextId) render(saved.insights || {}, saved.criteria || criteria, new Date(saved.created_at).toLocaleString());
+        else if (criteria.company || criteria.sector) await research(criteria, sourceContextId);
+        return;
+      }
+      if (saved) {
+        const criteria = saved.criteria || {};
+        document.getElementById('insight-company').value = criteria.company || '';
+        document.getElementById('insight-sector').value = criteria.sector || '';
+        document.getElementById('insight-geography').value = criteria.geography || 'Canada';
+        render(saved.insights || {}, criteria, new Date(saved.created_at).toLocaleString());
+      }
+    } catch (error) { console.warn('Previous business research could not be restored.'); }
+  }
   restore();
 })();
 </script>{% endblock %}

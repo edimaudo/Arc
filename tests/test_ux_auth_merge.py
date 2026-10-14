@@ -34,14 +34,16 @@ def test_templates_have_no_eyebrow_or_kicker_elements():
         assert 'class="kicker' not in source, path.name
 
 
-def test_demo_account_is_visible_and_one_click_signin_opens_workspace():
+def test_signin_is_a_normal_email_and_password_form():
     with TestClient(app, follow_redirects=False) as client:
         page = client.get('/login')
         assert page.status_code == 200
-        assert DEMO_EMAIL in page.text
-        assert DEMO_PASSWORD in page.text
-        assert 'Continue with demo account' in page.text
-        signed_in = client.post('/demo-login', data={'next': '/dashboard'})
+        assert 'name="email"' in page.text
+        assert 'name="password"' in page.text
+        assert 'Continue with demo account' not in page.text
+        assert DEMO_EMAIL not in page.text
+        assert DEMO_PASSWORD not in page.text
+        signed_in = client.post('/login', data={'email':DEMO_EMAIL, 'password':DEMO_PASSWORD, 'next':'/dashboard'})
         assert signed_in.status_code == 303
         assert signed_in.headers['location'] == '/dashboard'
         dashboard = client.get('/dashboard')
@@ -62,7 +64,10 @@ def test_analysis_document_upload_is_optional_and_no_storage_implementation_leak
         response = client.get('/analysis/new')
         assert response.status_code == 200
         assert 'Supporting documents (optional)' in response.text
+        assert 'Run investigation' not in response.text
         assert 'PDF, XLSX, XLSM, or CSV' in response.text
+        assert 'Optional · PDF' not in response.text
+        assert 'You can run an analysis without uploading any documents' not in response.text
         assert 'IndexedDB' not in response.text
         detail = client.get('/analysis/example')
         assert 'IndexedDB' not in detail.text
@@ -75,6 +80,8 @@ def test_discovery_is_standalone_comparable_company_research():
     assert response.status_code == 200
     html = response.text
     assert 'Find comparable companies' in html
+    assert 'ArcStore.allAnalyses()' in html
+    assert 'source_context_id' in html
     assert 'Annual revenue' in html
     assert 'Estimated company valuation' in html
     assert 'Number of employees' in html
@@ -94,6 +101,8 @@ def test_business_insights_is_company_research_not_mna_summary():
     assert 'IndexedDB' not in html
     assert 'Strategic fit' not in html
     assert 'Acquisition thesis' not in html
+    assert 'ArcStore.allAnalyses()' in html
+    assert 'Researching the business' in html
 
 
 def test_walkthrough_is_available_in_public_and_signed_in_layouts():

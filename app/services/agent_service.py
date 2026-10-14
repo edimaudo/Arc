@@ -117,20 +117,91 @@ class ArcAgent:
         ]
 
     async def run(self, goal: dict[str, Any], max_turns: int = 12) -> dict[str, Any]:
+        """Produce the first-pass M&A report in one grounded Gemini request.
+
+        Public-source synthesis and the bounded Qloo preflight run concurrently. This
+        replaces the previous multi-turn tool-planning loop for the initial report,
+        which could require many sequential model round trips before showing results.
+        """
         self._require_gemini()
-        seed = await self._seed_qloo_context(goal)
-        goal_with_seed = {**goal, "preloaded_qloo_context": seed}
-        first = await self._create_interaction(goal_with_seed)
-        result = await self._continue(first, max_turns=max_turns)
+        documents = []
+        for item in goal.get("documents", []) or []:
+            if not isinstance(item, dict):
+                continue
+            documents.append({
+                "filename": str(item.get("filename") or "Uploaded document"),
+                "metrics": item.get("metrics") if isinstance(item.get("metrics"), dict) else {},
+                "text": str(item.get("text") or "")[:6000],
+            })
+        brief = {
+            "acquirer": str(goal.get("acquirer") or "").strip(),
+            "target": str(goal.get("target") or "").strip(),
+            "objective": goal.get("objective") or "Full acquisition investigation",
+            "scopes": goal.get("scopes") or ["financial", "business", "cultural", "integration"],
+            "documents": documents,
+        }
+        prompt = (
+            "You are Arc, an M&A diligence analyst. Produce a useful first-pass report about both named companies in one response. "
+            "Use current Google Search grounding for each company, its industry, competitive position and publicly disclosed financial evidence. "
+            "Uploaded documents are optional. If none are present, research both companies anyway. If documents are present, use their extracted text and "
+            "metrics as additional evidence, distinguish management-provided data from public facts, and flag conflicts or missing support. "
+            "Never invent facts, figures, URLs, quotations, sources or Qloo results. Keep unsupported numeric scores null and state evidence gaps. "
+            "Return valid JSON only with these keys: summary, findings, risks, opportunities, diligence_questions, scores, financial, business, cultural, qloo_evidence, report. "
+            "findings must be a list of objects with type, title, body and evidence; risks and opportunities must be concise lists of objects with title, body and evidence where available; "
+            "diligence_questions must be a list of practical questions. scores may contain strategic_fit, cultural_fit, audience_expansion, financial_fit and integration_risk, "
+            "but use null or 'Not assessed' wherever public evidence is insufficient. financial must contain revenue_growth, ebitda_margin, net_debt_to_ebitda, customer_concentration and assessment, "
+            "using only sourced or uploaded values. business must contain model, market, strategic_rationale and open_questions. cultural may contain public-source observations, "
+            "but do not attribute anything to Qloo; the application will attach Qloo entity evidence separately. report must contain executive_summary, deal_fit, key_risks, "
+            "growth_opportunities, next_steps, sources and disclaimer. Make findings specific to these companies rather than generic diligence advice.\n\n"
+            "ASSIGNMENT:\n" + json.dumps(brief, ensure_ascii=False)
+        )
+
+        async def bounded_qloo_seed() -> dict[str, Any]:
+            scopes = {str(scope).lower() for scope in brief["scopes"]}
+            if "cultural" not in scopes:
+                return {"acquirer": [], "target": [], "comparison": {}, "errors": ["Cultural analysis was not requested."]}
+            try:
+                return await asyncio.wait_for(self._seed_qloo_context(brief), timeout=5.0)
+            except Exception as exc:
+                return {"acquirer": [], "target": [], "comparison": {}, "errors": [self._safe_error(exc)]}
+
+        search_result, seed = await asyncio.gather(
+            self._web_search_json(prompt), bounded_qloo_seed(), return_exceptions=True
+        )
+        if isinstance(search_result, BaseException):
+            raise search_result
+        if not isinstance(search_result, dict) or not isinstance(search_result.get("data"), dict):
+            raise RuntimeError("Grounded M&A research returned no structured result.")
+        parsed = search_result["data"]
+        activity = list(search_result.get("steps") or [])
+        if isinstance(seed, BaseException) or not isinstance(seed, dict):
+            seed = {"acquirer": [], "target": [], "comparison": {}, "errors": ["Qloo context was unavailable."]}
+
+        result = self._normalize_result(json.dumps(parsed, ensure_ascii=False), parsed, activity)
+        cultural = result.get("cultural") if isinstance(result.get("cultural"), dict) else {}
+        if seed.get("acquirer") and not cultural.get("acquirer_entities"):
+            cultural["acquirer_entities"] = seed["acquirer"]
+        if seed.get("target") and not cultural.get("target_entities"):
+            cultural["target_entities"] = seed["target"]
+        if seed.get("comparison"):
+            cultural["qloo_comparison"] = seed["comparison"]
+        result["cultural"] = cultural
         result["qloo_evidence"] = {"preflight": seed, **(result.get("qloo_evidence") or {})}
+        if seed.get("acquirer") or seed.get("target") or seed.get("comparison"):
+            activity.append({"tool": "qloo_preflight", "status": "complete", "result": "Qloo company-entity and cultural comparison context attached."})
+        elif seed.get("errors"):
+            activity.append({"tool": "qloo_preflight", "status": "limited", "result": "Qloo context unavailable; cultural findings are limited to public-source evidence."})
+        result["activity"] = activity
         return result
 
     async def _seed_qloo_context(self, goal: dict[str, Any]) -> dict[str, Any]:
         """Establish an initial Qloo footprint so Qloo remains material to every investigation."""
         seed: dict[str, Any] = {"acquirer": [], "target": [], "comparison": {}, "errors": []}
         try:
-            acq = await self.qloo_lookup_entities({"queries": [goal["acquirer"]]})
-            tgt = await self.qloo_lookup_entities({"queries": [goal["target"]]})
+            acq, tgt = await asyncio.gather(
+                self.qloo_lookup_entities({"queries": [goal["acquirer"]]}),
+                self.qloo_lookup_entities({"queries": [goal["target"]]}),
+            )
             seed["acquirer"] = acq.get("entities", [])[:5]
             seed["target"] = tgt.get("entities", [])[:5]
             seed["errors"].extend(acq.get("errors", []))
@@ -308,7 +379,7 @@ class ArcAgent:
             "when no reliable public figure exists. Never fabricate financial estimates or URLs. Explain why each business is comparable based on actual "
             "size/scale and industry, not potential deal logic. Prefer official company sources, filings, credible financial press, or reputable databases. "
             "Requested comparison metric: " + metric_label + ". Requested size band: " + band + ". Return the strongest supported matches first.\n"
-            f"REFERENCE COMPANY (optional): {reference or 'None provided'}\nINDUSTRY: {sector}\nGEOGRAPHY: {geography}\n"
+            f"REFERENCE COMPANY (optional): {reference or 'None provided'}\nINDUSTRY: {sector or 'Infer from the reference company'}\nGEOGRAPHY: {geography}\n"
             "If a reference company is supplied, use it to understand the business category and approximate scale, but do not include it as one of the comparables. "
             "If it is not supplied, use industry, geography, and size criteria to discover comparable companies."
         )

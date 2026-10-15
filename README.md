@@ -1,4 +1,4 @@
-# Arc — M&A Cultural & Business Intelligence
+# Arc — Acquisition Cultural & Business Intelligence
 
 Looking to acquire a new business or see what businesses align too your values? Arc is the tool for you. 
 It combines business insights with cultural intelligence.  It achieves this by leveraging Qloo cultural intelligence and an AI analyst layer.

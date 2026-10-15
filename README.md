@@ -15,6 +15,11 @@ It Analyzes information through these lenses
 - Cultural intelligence: Qloo APIs (`/search`, `/v2/insights`, analysis/compare, trends)
 - AI: Gemini Flash
 
+## Login
+Default demo credentials:
+- Email: `demo@arc.app`
+- Password: `ArcDemo2026!`
+
 ## Run
 ```bash
 python -m venv .venv

@@ -140,7 +140,7 @@ class IntegrationTests(unittest.TestCase):
         original = discovery._agent
         discovery._agent = UnavailableDiscovery()
         try:
-            response = self.client.post('/discovery/api/comparables', json={'sector': 'Retail'})
+            response = self.client.post('/discovery/api/comparables', json={'reference_company': 'Example Co', 'geography': 'North America (Canada and United States)'})
             self.assertEqual(response.status_code, 503)
             self.assertIn('credentials', response.json()['error'].lower())
             self.assertTrue(response.json()['retryable'])
@@ -235,7 +235,7 @@ class IntegrationTests(unittest.TestCase):
         body = self.client.get('/').text
         self.assertNotIn('<nav', body)
         self.assertNotIn('Qloo', body)
-        for label in ['M&amp;A Analysis', 'Business Insights', 'Discovery', 'Start M&amp;A analysis']:
+        for label in ['Acquisition Analysis', 'Business Insights', 'Discovery', 'Start Acquisition Analysis']:
             self.assertIn(label, body)
         for route in ['/dashboard', '/analyst', '/owner', '/discovery', '/analysis/new']:
             response = self.client.get(route)
@@ -243,8 +243,8 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn('<nav aria-label="Primary">', response.text)
             self.assertNotIn('class="eyebrow"', response.text)
             self.assertNotIn('class="kicker"', response.text)
-        self.assertIn('Find 6–10 companies similar in industry and business scale', self.client.get('/discovery').text)
-        self.assertIn('What is happening in this business or market', self.client.get('/owner').text)
+        self.assertIn('Discover the top 5 companies aligned with the company you’re looking at.', self.client.get('/discovery').text)
+        self.assertNotIn('Business Insights answers', self.client.get('/owner').text)
         self.assertIn('aria-label="Open app tour"', self.client.get('/dashboard').text)
 
     def test_unauthenticated_routes_redirect_to_sign_in(self):

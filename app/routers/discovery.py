@@ -28,24 +28,21 @@ async def comparable_companies_api(request: Request):
         payload = {}
     sector = str(payload.get('sector') or '').strip()
     reference_company = str(payload.get('reference_company') or '').strip()
-    if not sector and not reference_company:
-        raise HTTPException(status_code=400, detail='Enter a reference company or an industry/sector.')
+    if not reference_company:
+        raise HTTPException(status_code=400, detail='Choose a reference company before searching.')
     criteria = {
         'reference_company': reference_company,
         'sector': sector,
         'geography': str(payload.get('geography') or 'Canada').strip() or 'Canada',
-        'size_metric': str(payload.get('size_metric') or 'revenue').strip(),
-        'size_band': str(payload.get('size_band') or 'Any size').strip(),
+        'size_metric': 'all',
+        'size_band': 'All available scale indicators',
     }
-    allowed_metrics = {'revenue', 'valuation', 'employees'}
-    if criteria['size_metric'] not in allowed_metrics:
-        criteria['size_metric'] = 'revenue'
     try:
         result = await _agent.find_comparable_companies(criteria)
     except Exception as exc:
         return JSONResponse({'error': friendly_api_error(exc, 'Discovery service'), 'status': 'Discovery failed', 'retryable': True}, status_code=503)
     return {
-        'comparables': result.get('comparables', [])[:10],
+        'comparables': result.get('comparables', [])[:5],
         'search_activity': result.get('search_activity', []),
         'criteria': criteria,
     }

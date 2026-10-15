@@ -15,7 +15,7 @@ ToolHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
 
 class ArcAgent:
-    """Arc's live tool-using M&A analyst.
+    """Arc's live tool-using acquisition analyst.
 
     Gemini is responsible for selecting and sequencing tools. The application
     executes those tools server-side. Qloo is the cultural-intelligence source;
@@ -117,7 +117,7 @@ class ArcAgent:
         ]
 
     async def run(self, goal: dict[str, Any], max_turns: int = 12) -> dict[str, Any]:
-        """Produce the first-pass M&A report in one grounded Gemini request.
+        """Produce the first-pass acquisition report in one grounded Gemini request.
 
         Public-source synthesis and the bounded Qloo preflight run concurrently. This
         replaces the previous multi-turn tool-planning loop for the initial report,
@@ -142,7 +142,7 @@ class ArcAgent:
             "documents": documents,
         }
         prompt = (
-            "You are Arc, an M&A diligence analyst. Produce a useful first-pass report about both named companies in one response. "
+            "You are Arc, an acquisition diligence analyst. Produce a useful first-pass report about both named companies in one response. "
             "Use current Google Search grounding for each company, its industry, competitive position and publicly disclosed financial evidence. "
             "Uploaded documents are optional. If none are present, research both companies anyway. If documents are present, use their extracted text and "
             "metrics as additional evidence, distinguish management-provided data from public facts, and flag conflicts or missing support. "
@@ -184,7 +184,7 @@ class ArcAgent:
                 return self._qloo_only_report(brief, seed, self._safe_error(search_result))
             raise search_result
         if not isinstance(search_result, dict) or not isinstance(search_result.get("data"), dict):
-            raise RuntimeError("Grounded M&A research returned no structured result.")
+            raise RuntimeError("Grounded acquisition research returned no structured result.")
         parsed = search_result["data"]
         activity = list(search_result.get("steps") or [])
 
@@ -254,7 +254,7 @@ class ArcAgent:
             "Which distinctive audience preferences should each brand retain after integration?",
             "What current financial, customer-retention and operating evidence is needed to complete the review?",
         ]
-        summary = f"Limited M&A review for {acquirer} and {target}. Gemini public-source research is unavailable; Arc retained the Qloo cultural signals available for this run. Financial, commercial and integration conclusions remain unverified."
+        summary = f"Limited acquisition review for {acquirer} and {target}. Gemini public-source research is unavailable; Arc retained the Qloo cultural signals available for this run. Financial, commercial and integration conclusions remain unverified."
         cultural = {
             "profile_summary": "Qloo cultural data is available, but public-source research could not complete. Treat affinities as directional hypotheses, not verified customer overlap.",
             "acquirer_entities": seed.get("acquirer", []), "target_entities": seed.get("target", []),
@@ -500,7 +500,7 @@ class ArcAgent:
         payload = {
             "model": self.model,
             "system_instruction": self._system_prompt(goal),
-            "input": "Investigate this M&A assignment using public-source research even when no documents are provided. Documents are optional supporting evidence, not a prerequisite. Always produce a useful report from verified public sources; when documents are provided, analyze them, reconcile them with public facts, and clearly flag conflicts or missing evidence. Do not invent company facts, scores, financial metrics, URLs or sources.\n\nUSER GOAL:\n" + json.dumps(goal, ensure_ascii=False),
+            "input": "Investigate this acquisition assignment using public-source research even when no documents are provided. Documents are optional supporting evidence, not a prerequisite. Always produce a useful report from verified public sources; when documents are provided, analyze them, reconcile them with public facts, and clearly flag conflicts or missing evidence. Do not invent company facts, scores, financial metrics, URLs or sources.\n\nUSER GOAL:\n" + json.dumps(goal, ensure_ascii=False),
             "tools": self.tool_declarations,
         }
         return await self._post_interaction(payload)
@@ -568,7 +568,7 @@ class ArcAgent:
         output = latest.get("output_text") or self._extract_output_text(latest)
         parsed = self._parse_json_object(output)
         if not parsed:
-            raise RuntimeError('Gemini returned no valid structured M&A findings.')
+            raise RuntimeError('Gemini returned no valid structured acquisition findings.')
         return self._normalize_result(output, parsed, activity)
 
     async def _web_search_json(self, prompt: str) -> dict[str, Any]:
@@ -610,14 +610,14 @@ class ArcAgent:
         return result
 
     async def research_business_insights(self, args: dict[str, Any]) -> dict[str, Any]:
-        """Research a business as an operating company, independent of an M&A assignment."""
+        """Research a business as an operating company, independent of an acquisition assignment."""
         company = str(args.get("company") or "").strip()
         sector = str(args.get("sector") or "").strip()
         geography = str(args.get("geography") or "Canada").strip() or "Canada"
         focus = str(args.get("focus") or "Overall business").strip() or "Overall business"
         prompt = (
             "Produce practical, current BUSINESS INSIGHTS about the named company and/or industry. "
-            "This is ordinary business research, not M&A analysis: do not discuss acquisitions, deal fit, integration, buyers, sellers, or transaction rationale. "
+            "This is ordinary business research, not acquisition analysis: do not discuss acquisitions, deal fit, integration, buyers, sellers, or transaction rationale. "
             "Use Google Search grounding and return JSON only with keys: company, sector, geography, business_overview, business_model, "
             "market_position, current_trends, competitive_landscape, customer_and_product_signals, growth_opportunities, "
             "business_risks, recommended_actions, key_metrics_to_watch, cultural_context, sources. "
@@ -665,29 +665,31 @@ class ArcAgent:
         return {"insights": insights, "search_activity": search.get("steps", [])}
 
     async def find_comparable_companies(self, args: dict[str, Any]) -> dict[str, Any]:
-        """Find companies of comparable business scale, without requiring an M&A analysis."""
+        """Find the five closest peer businesses by scale, industry and cultural context."""
         reference = str(args.get("reference_company") or "").strip()
         sector = str(args.get("sector") or "").strip()
-        geography = str(args.get("geography") or "Canada").strip() or "Canada"
-        metric = str(args.get("size_metric") or "revenue").strip()
-        band = str(args.get("size_band") or "Any size").strip() or "Any size"
-        metric_labels = {"revenue": "annual revenue", "valuation": "estimated company valuation or enterprise value", "employees": "employee count"}
-        metric_label = metric_labels.get(metric, "annual revenue")
+        geography = str(args.get("geography") or "North America (Canada and United States)").strip() or "North America (Canada and United States)"
+        if "north america" in geography.casefold():
+            geography_scope = "Canada and the United States; include either country and label each company's country."
+        else:
+            geography_scope = geography
         prompt = (
-            "Find 6-10 real operating companies that are comparable in BUSINESS SCALE and industry. This is independent company discovery, "
-            "not an acquisition-target search: do not rank acquisition fit, recommend an acquisition, or use strategic/cultural fit scores. "
-            "Use current Google Search grounding. Prefer comparable private or public companies in the requested geography. "
-            "Return JSON only with keys reference_company, sector, geography, comparables. Each comparable must contain name, sector, geography, "
-            "website, annual_revenue_estimate, company_valuation_estimate, employee_count_estimate, business_summary, comparability_reason, cultural_context, "
-            "and sources (a list of title/url objects). cultural_context should summarize evidence about consumer audience, brand positioning, culturally relevant categories, "
-            "customer communities, lifestyle or media affinities and local taste where relevant, with clear evidence basis and limits. Culture is a required peer-screening dimension alongside scale and industry, "
-            "but do not turn it into an acquisition-fit score. Each estimate must include its currency/units and period when known; use null or 'Not publicly disclosed' "
-            "when no reliable public figure exists. Never fabricate financial estimates or URLs. Explain why each business is comparable based on actual "
-            "size/scale and industry, not potential deal logic. Prefer official company sources, filings, credible financial press, or reputable databases. "
-            "Requested comparison metric: " + metric_label + ". Requested size band: " + band + ". Return the strongest supported matches first.\n"
-            f"REFERENCE COMPANY (optional): {reference or 'None provided'}\nINDUSTRY: {sector or 'Infer from the reference company'}\nGEOGRAPHY: {geography}\n"
-            "If a reference company is supplied, use it to understand the business category and approximate scale, but do not include it as one of the comparables. "
-            "If it is not supplied, use industry, geography, and size criteria to discover comparable companies."
+            "Discover EXACTLY the top 5 real operating companies aligned with the reference company. "
+            "Use the reference company as the main signal and evaluate similarity across ALL available scale indicators together: annual revenue, "
+            "company valuation or enterprise value, and employee count. Do not ask the user to choose one measure, and do not require all three values "
+            "to be publicly disclosed. Also compare industry, business model, products and customers, then use public cultural and audience context as an "
+            "important dimension. Do not rank acquisition fit, recommend an acquisition, or create a cultural-fit score. "
+            "Use current Google Search grounding. Return JSON only with keys reference_company, sector, geography, comparables. Each comparable must contain "
+            "name, sector, geography, website, annual_revenue_estimate, company_valuation_estimate, employee_count_estimate, business_summary, "
+            "comparability_reason, cultural_context, and sources (a list of title/url objects). cultural_context should summarize sourced brand positioning, "
+            "audience characteristics, relevant cultural categories and customer communities, while making clear where evidence is limited. Qloo-based cultural "
+            "signals will be added separately when available. Each estimate must include currency/units and period when known; use null or 'Not publicly disclosed' "
+            "when no reliable public figure exists. Never fabricate financial estimates, cultural signals, or URLs. Prefer official company sources, filings, "
+            "credible financial press, or reputable databases. Explain why each company is aligned based on real scale, industry, offerings and audience, not deal logic. "
+            "Return the five strongest supported peers, excluding the reference company.\n"
+            f"REFERENCE COMPANY: {reference or 'Not specified'}\nINDUSTRY (infer from company when empty): {sector or 'Infer from the reference company'}\n"
+            f"GEOGRAPHY SCOPE: {geography_scope}\n"
+            "If a reference company is not resolvable, use available public sources to identify its industry and size; if neither can be established, state the limitation rather than guessing."
         )
         search = await self._web_search_json(prompt)
         values = search["data"].get("comparables", [])
@@ -701,15 +703,15 @@ class ArcAgent:
             if reference and str(item.get("name") or "").casefold() == ref_normalized:
                 continue
             cleaned.append(item)
-        # Culture is a first-class peer attribute. Cross-check a bounded subset in Qloo
-        # without inventing a cultural similarity percentage.
+        # Return only five candidates and add cultural context to every displayed peer.
+        peers = cleaned[:5]
         try:
-            enriched = await asyncio.wait_for(self._enrich_comparables_with_culture(cleaned[:10], reference, geography), timeout=6.5)
+            enriched = await asyncio.wait_for(self._enrich_comparables_with_culture(peers, reference, geography), timeout=6.5)
         except Exception:
-            enriched = [dict(item, cultural_intelligence={"status": "unavailable", "note": "Qloo cultural comparison did not complete in this pass."}) for item in cleaned[:10]]
+            enriched = [dict(item, cultural_intelligence={"status": "unavailable", "note": "Cultural comparison did not complete in this pass."}) for item in peers]
         return {
-            "criteria": {"reference_company": reference, "sector": sector, "geography": geography, "size_metric": metric, "size_band": band},
-            "comparables": enriched,
+            "criteria": {"reference_company": reference, "sector": sector, "geography": geography, "size_metric": "all", "size_band": "All available scale indicators"},
+            "comparables": enriched[:5],
             "search_activity": search["steps"],
         }
 
@@ -1060,7 +1062,7 @@ class ArcAgent:
     @staticmethod
     def _system_prompt(goal: dict[str, Any]) -> str:
         return (
-            "You are Arc, an M&A intelligence analyst. Investigate the named acquirer and target from public sources even when no files are uploaded; uploaded documents supplement rather than enable the analysis. Never wait for documents before producing findings. "
+            "You are Arc, an acquisition intelligence analyst. Investigate the named acquirer and target from public sources even when no files are uploaded; uploaded documents supplement rather than enable the analysis. Never wait for documents before producing findings. "
             "Use tool calls to gather evidence, inspect results, and choose additional actions when evidence is incomplete or contradictory. "
             "Qloo is the authoritative cultural-intelligence source. Use Qloo /search to resolve entities, then /v2/insights and /v2/analysis/compare for cultural/audience analysis, and /v2/trending when cultural momentum is relevant. "
             "Use Google Search grounding for current public-company and market facts. Use deterministic financial calculation tools for supplied financial metrics. "

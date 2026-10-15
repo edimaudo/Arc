@@ -1,37 +1,50 @@
 {% extends "base.html" %}
 {% block title %}Discovery — Arc{% endblock %}
 {% block content %}
-<section class="wrap page-head"><div><h1>Discovery</h1><p class="muted">Find 6–10 companies similar in industry and business scale. Results include available revenue, valuation or employee estimates, plus source-backed reasons for each match.</p></div></section>
+<section class="wrap page-head"><div><h1>Discovery</h1><p class="muted">Discover the top 5 companies aligned with the company you’re looking at.</p></div></section>
 <section class="wrap panel discovery-command">
   <form id="discovery-form">
-    <div class="two-col"><label>Reference company (optional)<input id="reference-company" placeholder="A company to use as a size and industry example"></label><label>Industry or sector<input id="sector" placeholder="e.g. Consumer packaged goods"></label></div>
-    <div class="two-col"><label>Geography<input id="geography" value="Canada" placeholder="Country or region"></label><label>Compare companies by<select id="size-metric"><option value="revenue">Annual revenue</option><option value="valuation">Estimated company valuation</option><option value="employees">Number of employees</option></select></label></div>
-    <label>Comparable size<select id="size-band"></select></label>
-    <div class="discovery-actions"><p class="muted" id="discovery-help">Discovery uses your latest company context when available, or you can enter a reference company or industry.</p><button class="button primary" id="refresh-shortlist" type="submit">Find comparable companies</button></div>
+    <label>Company<select id="reference-company" required><option value="">Loading saved companies…</option><option value="__custom__">Enter another company…</option></select></label>
+    <div id="custom-company-wrap" hidden><label for="custom-company">Company name<input id="custom-company" placeholder="Company name" autocomplete="organization"></label></div>
+    <label>Geography<select id="geography"><option value="North America (Canada and United States)" selected>North America (Canada and United States)</option><option value="Canada">Canada</option><option value="United States">United States</option></select></label>
+    <p class="muted discovery-help" id="company-help" hidden>Search a company in Acquisition Analysis or Business Insights first, or choose “Enter another company”.</p>
+    <div class="discovery-actions"><button class="button primary" id="refresh-shortlist" type="submit">Find comparable companies</button></div>
   </form>
 </section>
-<section class="wrap" style="margin-bottom:80px"><div class="panel-head"><h2 id="results-heading">Comparable companies</h2><span class="muted" id="results-count"></span></div><div class="candidate-list" id="candidate-list"><div class="empty-state"><h3>Build a comparable-company list</h3><p class="muted">Add an industry and optionally a reference company. Choose a size measure and range. To understand a company’s business model, market trends or operating risks, use Business Insights.</p></div></div></section>
+<section class="wrap discovery-results" id="discovery-results" hidden>
+  <div class="panel-head"><h2 id="results-heading">Top 5 aligned companies</h2><span class="muted" id="results-count"></span></div>
+  <div class="candidate-list" id="candidate-list"></div>
+</section>
 {% endblock %}
 {% block scripts %}<script>
 (() => {
   const form = document.getElementById('discovery-form');
-  const metric = document.getElementById('size-metric');
-  const band = document.getElementById('size-band');
+  const reference = document.getElementById('reference-company');
+  const geography = document.getElementById('geography');
+  const customWrap = document.getElementById('custom-company-wrap');
+  const customInput = document.getElementById('custom-company');
+  const help = document.getElementById('company-help');
   const button = document.getElementById('refresh-shortlist');
+  const results = document.getElementById('discovery-results');
   const list = document.getElementById('candidate-list');
   const count = document.getElementById('results-count');
+  const companyContext = new Map();
   let sourceContextId = '';
   const esc = v => String(v ?? '').replace(/\bqloo\b/gi, 'cultural data source').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const array = v => Array.isArray(v) ? v : [];
   const formatAffinity = value => { const n = Number(value); if (!Number.isFinite(n)) return String(value ?? ''); return `${Math.round(n >= 0 && n <= 1 ? n * 100 : n)}/100`; };
-  const bands = {
-    revenue: ['Any size', 'Under $10 million', '$10 million–$50 million', '$50 million–$250 million', '$250 million–$1 billion', '$1 billion or more'],
-    valuation: ['Any size', 'Under $50 million', '$50 million–$250 million', '$250 million–$1 billion', '$1 billion–$5 billion', '$5 billion or more'],
-    employees: ['Any size', 'Fewer than 100', '100–500', '500–2,000', '2,000–10,000', 'More than 10,000']
-  };
-  function updateBands(selected = 'Any size') {
-    band.innerHTML = bands[metric.value].map(v => `<option${v === selected ? ' selected' : ''}>${esc(v)}</option>`).join('');
+
+  function addCompany(name, context = {}) {
+    const value = String(name || '').trim();
+    if (!value) return;
+    const key = value.toLocaleLowerCase();
+    if (!companyContext.has(key)) companyContext.set(key, {
+      name: value,
+      sector: String(context.sector || ''),
+      geography: String(context.geography || 'North America (Canada and United States)'),
+      sourceContextId: context.sourceContextId || ''
+    });
   }
-  metric.addEventListener('change', () => updateBands());
   function sourceLinks(sources) {
     if (!Array.isArray(sources) || !sources.length) return '';
     return `<div class="source-links"><strong>Sources</strong>${sources.slice(0,3).map(s => {
@@ -50,110 +63,113 @@
     if (typeof value === 'string') return value;
     if (typeof value !== 'object') return String(value);
     if (value.warning) return `Data note: ${String(value.warning).replace(/\bqloo\b/gi, 'cultural data source')}`;
-    const knownEntities = [...(Array.isArray(profile.matched_entities) ? profile.matched_entities : []), ...(Array.isArray(profile.company_match_entities) ? profile.company_match_entities : []), ...(Array.isArray(profile.reference_match_entities) ? profile.reference_match_entities : [])];
+    const knownEntities = [...array(profile.matched_entities), ...array(profile.company_match_entities), ...array(profile.reference_match_entities)];
     const aliases = new Map(knownEntities.filter(item => item?.entity_id && item?.name).map(item => [String(item.entity_id), String(item.name)]));
     const labelFor = key => aliases.get(String(key)) || String(key).replaceAll('_', ' ');
     const valueText = detail => {
       if (typeof detail === 'number') return `${(detail <= 1 ? detail * 100 : detail).toFixed(0)}%`;
-      if (Array.isArray(detail)) return detail.map(item => typeof item === 'string' ? (aliases.get(item) || item) : (item.name || aliases.get(item.entity_id || item.id) || item.entity_name || item.entity_id || '')).filter(Boolean).slice(0, 4).join(', ');
-      if (detail && typeof detail === 'object') return Object.entries(detail).slice(0, 4).map(([key, nested]) => `${labelFor(key)} ${valueText(nested)}`).join(', ');
+      if (Array.isArray(detail)) return detail.map(item => typeof item === 'string' ? (aliases.get(item) || item) : (item.name || aliases.get(item.entity_id || item.id) || item.entity_name || item.entity_id || '')).filter(Boolean).slice(0,4).join(', ');
+      if (detail && typeof detail === 'object') return Object.entries(detail).slice(0,4).map(([key,nested]) => `${labelFor(key)} ${valueText(nested)}`).join(', ');
       return String(detail);
     };
-    return Object.entries(value).slice(0, 5).map(([key, detail]) => `${labelFor(key)}: ${valueText(detail)}`).filter(Boolean).join(' · ');
+    return Object.entries(value).slice(0,5).map(([key,detail]) => `${labelFor(key)}: ${valueText(detail)}`).filter(Boolean).join(' · ');
   }
   function qlooPeerCulture(profile) {
     profile = profile || {};
-    const categories = Array.isArray(profile.categories) ? profile.categories.filter(c => Array.isArray(c.results) && c.results.length) : [];
-    const signals = Array.isArray(profile.signals) ? profile.signals : (Array.isArray(profile.top_affinities) ? profile.top_affinities : []);
+    const categories = array(profile.categories).filter(c => array(c.results).length);
+    const signals = array(profile.signals).length ? array(profile.signals) : array(profile.top_affinities);
     const items = signals.length ? signals.slice(0,8).map(item => `<span class="cultural-tag">${esc(item.name || item.title || '')}${item.category || item.type ? ` · ${esc(item.category || item.type)}` : ''}${item.affinity !== null && item.affinity !== undefined ? ` · ${esc(formatAffinity(item.affinity))} affinity` : ''}</span>`).join('') : categories.flatMap(c => c.results.slice(0,3).map(x => `<span class="cultural-tag">${esc(x.name || '')}</span>`)).join('');
     const rowExplanations = signals.filter(item => explainabilityText(item.explainability, profile)).slice(0,4).map(item => `<details class="cultural-explanation"><summary>Why ${esc(item.name || 'this affinity')} appeared</summary><p>${esc(explainabilityText(item.explainability, profile))}</p></details>`).join('');
     const aggregateExplanation = explainabilityText(profile.explainability, profile);
-    const matched = Array.isArray(profile.company_match) ? profile.company_match : (Array.isArray(profile.matched_entities) ? profile.matched_entities.map(x => x.name) : []);
-    return `<div class="peer-culture"><h3>Cultural and audience signals</h3>${profile.status === 'available' || items ? `<p class="muted">${esc(profile.note || 'cultural signals are available for this peer.')}</p><div class="cultural-tags">${items || matched.map(x=>`<span class="cultural-tag">${esc(x)}</span>`).join('')}</div>${rowExplanations}${aggregateExplanation ? `<details class="cultural-explanation"><summary>What influenced these results</summary><p>${esc(aggregateExplanation)}</p></details>` : ''}` : `<p class="muted">${esc(String(profile.note || 'No cultural match was returned for this peer. Public-source context remains available.').replace(/\bqloo\b/gi, 'cultural data source'))}</p>`}</div>`;
+    const matched = Array.isArray(profile.company_match) ? profile.company_match : array(profile.matched_entities).map(x => x.name);
+    return `<div class="peer-culture"><h3>Cultural and audience signals</h3>${profile.status === 'available' || items ? `<p class="muted">${esc(profile.note || 'Cultural signals are available for this peer.')}</p><div class="cultural-tags">${items || matched.map(x=>`<span class="cultural-tag">${esc(x)}</span>`).join('')}</div>${rowExplanations}${aggregateExplanation ? `<details class="cultural-explanation"><summary>What influenced these results</summary><p>${esc(aggregateExplanation)}</p></details>` : ''}` : `<p class="muted">${esc(String(profile.note || 'No cultural match was returned for this peer.').replace(/\bqloo\b/gi, 'cultural data source'))}</p>`}</div>`;
   }
   function showResults(companies, criteria) {
+    companies = array(companies).slice(0,5);
     count.textContent = `${companies.length} ${companies.length === 1 ? 'company' : 'companies'}`;
     if (!companies.length) {
-      list.innerHTML = '<div class="empty-state"><h3>No comparable companies found</h3><p class="muted">Try a broader industry, geography, or size range.</p></div>';
+      list.innerHTML = '<div class="empty-state"><h3>No aligned companies found</h3><p class="muted">Try another saved company or geography.</p></div>';
       return;
     }
     list.innerHTML = companies.map(c => {
-      const facts = [
-        ['Annual revenue', c.annual_revenue_estimate],
-        ['Estimated value', c.company_valuation_estimate],
-        ['Employees', c.employee_count_estimate]
-      ].filter(([,v]) => v !== null && v !== undefined && v !== '' && v !== 'Not publicly disclosed');
+      const facts = [['Annual revenue', c.annual_revenue_estimate],['Estimated value', c.company_valuation_estimate],['Employees', c.employee_count_estimate]].filter(([,v]) => v !== null && v !== undefined && v !== '' && v !== 'Not publicly disclosed');
       const website = typeof c.website === 'string' && /^https?:\/\//i.test(c.website) ? c.website : '';
       const culture = c.cultural_intelligence || {};
       const publicCulture = c.cultural_context || {};
-      return `<article class="candidate-card comparable-card"><div class="candidate-top"><div><h2>${esc(c.name || 'Company')}</h2><p class="muted">${esc(c.sector || criteria.sector)}${c.geography ? ' · ' + esc(c.geography) : ''}</p></div>${website ? `<a class="text-link" href="${esc(website)}" target="_blank" rel="noopener noreferrer">Company website ↗</a>` : ''}</div><p>${esc(c.business_summary || 'No business summary was returned.')}</p>${facts.length ? `<div class="comparable-facts">${facts.map(([label,val]) => `<div><span>${label}</span><strong>${esc(val)}</strong></div>`).join('')}</div>` : '<p class="muted">Comparable financial or size figures were not publicly available.</p>'}<div class="comparable-reason"><strong>Why it is comparable</strong><p>${esc(c.comparability_reason || 'The company matched the requested industry and search criteria. Verify scale against the linked sources.')}</p></div><div class="peer-culture"><h3>Cultural profile</h3>${cultureContent(publicCulture) || '<p class="muted">Public-source cultural context was not returned for this company.</p>'}${qlooPeerCulture(culture)}</div>${sourceLinks(c.sources)}</article>`;
+      return `<article class="candidate-card comparable-card"><div class="candidate-top"><div><h2>${esc(c.name || 'Company')}</h2><p class="muted">${esc(c.sector || criteria.sector || '')}${c.geography ? (c.sector || criteria.sector ? ' · ' : '') + esc(c.geography) : ''}</p></div>${website ? `<a class="text-link" href="${esc(website)}" target="_blank" rel="noopener noreferrer">Company website ↗</a>` : ''}</div><p>${esc(c.business_summary || 'No business summary was returned.')}</p>${facts.length ? `<div class="comparable-facts">${facts.map(([label,val]) => `<div><span>${label}</span><strong>${esc(val)}</strong></div>`).join('')}</div>` : '<p class="muted">Comparable financial or size figures were not publicly available.</p>'}<div class="comparable-reason"><strong>Why it is aligned</strong><p>${esc(c.comparability_reason || 'The company matched the reference business on available industry, scale and cultural evidence.')}</p></div><div class="peer-culture"><h3>Cultural profile</h3>${cultureContent(publicCulture) || '<p class="muted">Public-source cultural context was not returned for this company.</p>'}${qlooPeerCulture(culture)}</div>${sourceLinks(c.sources)}</article>`;
     }).join('');
   }
+
+  reference.addEventListener('change', () => {
+    const isCustom = reference.value === '__custom__';
+    customWrap.hidden = !isCustom;
+    customInput.required = isCustom;
+    if (!isCustom) {
+      const company = companyContext.get(reference.value.toLocaleLowerCase());
+      sourceContextId = company?.sourceContextId || '';
+    } else sourceContextId = '';
+  });
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    const criteria = {
-      reference_company: document.getElementById('reference-company').value.trim(),
-      sector: document.getElementById('sector').value.trim(),
-      geography: document.getElementById('geography').value.trim() || 'Canada',
-      size_metric: metric.value,
-      size_band: band.value
-    };
-    if (!criteria.sector && !criteria.reference_company) {
-      list.innerHTML = '<div class="empty-state"><h3>Add a reference company or industry</h3><p class="muted">Arc can infer the industry from a reference company, or use the sector you enter.</p></div>';
+    const isCustom = reference.value === '__custom__';
+    const selected = isCustom ? {name:customInput.value.trim(), sector:'', geography:geography.value, sourceContextId:''} : companyContext.get(reference.value.toLocaleLowerCase());
+    if (!selected?.name) {
+      results.hidden = false;
+      list.innerHTML = '<div class="empty-state"><h3>Choose a company</h3><p class="muted">Select a previously searched company or enter another company.</p></div>';
       return;
     }
-    button.disabled = true; button.setAttribute('aria-busy', 'true'); button.textContent = 'Getting results…'; count.textContent = '';
-    list.innerHTML = '<div class="empty-state"><h3>Getting results</h3><p class="muted">Arc is checking company scale, brand context and cultural affinity signals for comparable businesses.</p></div>';
+    const criteria = {reference_company:selected.name, sector:selected.sector || '', geography:geography.value};
+    results.hidden = false;
+    button.disabled = true; button.setAttribute('aria-busy','true'); button.classList.add('is-loading'); button.textContent = 'Getting results…'; count.textContent = '';
+    list.innerHTML = '<div class="empty-state"><h3>Getting results</h3><p class="muted">Finding five companies with comparable scale, industry, and cultural and audience signals.</p></div>';
     try {
-      const response = await fetch('/discovery/api/comparables', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(criteria)});
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.detail || data.error || 'The discovery service did not return a usable response. Check provider availability and retry.');
-      const result = {id:'discovery-' + Date.now(), created_at:new Date().toISOString(), source_context_id:sourceContextId || null, criteria, comparables:data.comparables || []};
+      const response = await fetch('/discovery/api/comparables', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(criteria)});
+      const data = await response.json().catch(()=>({}));
+      if (!response.ok) throw new Error(data.detail || data.error || 'Discovery could not return results. Check provider availability and retry.');
+      const result = {id:'discovery-' + Date.now(),created_at:new Date().toISOString(),source_context_id:sourceContextId || selected.sourceContextId || null,criteria,comparables:array(data.comparables).slice(0,5)};
       await ArcStore.putDiscovery(result);
-      showResults(result.comparables, criteria);
-    } catch (error) {
-      const message = /fetch|network|load failed/i.test(error.message || '') ? 'Arc could not reach the research service. Your search criteria are still here; try again in a moment.' : (error.message || 'Arc could not find comparable companies.');
-      list.innerHTML = `<div class="empty-state"><h3>Discovery is temporarily unavailable</h3><p class="muted">${esc(message)}</p><button class="button secondary" type="button" data-retry-discovery>Try again</button><p class="muted">If this continues, check the Gemini API key, model setting, quota and provider status in Vercel.</p></div>`;
-      list.querySelector('[data-retry-discovery]')?.addEventListener('click', () => form.requestSubmit());
-    } finally { button.disabled = false; button.setAttribute('aria-busy', 'false'); button.textContent = 'Find comparable companies'; }
+      showResults(result.comparables,criteria);
+    } catch(error) {
+      const message = /fetch|network|load failed/i.test(error.message || '') ? 'Arc could not reach the research service. Your selected company is still here; try again in a moment.' : (error.message || 'Arc could not find comparable companies.');
+      list.innerHTML = `<div class="empty-state"><h3>Discovery is temporarily unavailable</h3><p class="muted">${esc(message)}</p><button class="button secondary" type="button" data-retry-discovery>Try again</button></div>`;
+      list.querySelector('[data-retry-discovery]')?.addEventListener('click',()=>form.requestSubmit());
+    } finally {
+      button.disabled = false; button.setAttribute('aria-busy','false'); button.classList.remove('is-loading'); button.textContent = 'Find comparable companies';
+    }
   });
-  updateBands();
-  function fillCriteria(criteria) {
-    document.getElementById('reference-company').value = criteria.reference_company || '';
-    document.getElementById('sector').value = criteria.sector || '';
-    document.getElementById('geography').value = criteria.geography || 'Canada';
-    metric.value = criteria.size_metric || 'revenue';
-    updateBands(criteria.size_band || 'Any size');
+
+  async function populateSavedCompanies() {
+    const [analyses,discoveries,insights] = await Promise.all([ArcStore.allAnalyses(),ArcStore.allDiscoveries(),ArcStore.allInsights()]);
+    for (const a of analyses) {
+      const context = {sector:a.business?.sector || a.sector || a.report?.sector || '',geography:a.geography || 'North America (Canada and United States)',sourceContextId:`analysis:${a.analysis_id}`};
+      addCompany(a.target,context); addCompany(a.acquirer,context);
+    }
+    for (const item of insights) {
+      const c = item.criteria || {};
+      const context = {sector:c.sector || item.insights?.sector || '',geography:c.geography || 'North America (Canada and United States)',sourceContextId:`insight:${item.id}`};
+      addCompany(c.company || item.insights?.company,context);
+      for (const competitor of array(item.insights?.competitive_landscape)) addCompany(competitor.name,context);
+    }
+    for (const item of discoveries) {
+      const c = item.criteria || item;
+      const context = {sector:c.sector || '',geography:c.geography || 'North America (Canada and United States)',sourceContextId:item.source_context_id || `discovery:${item.id}`};
+      addCompany(c.reference_company,context);
+      for (const peer of array(item.comparables)) addCompany(peer.name,{...context,sector:peer.sector || context.sector,geography:peer.geography || context.geography});
+    }
+    const ordered = [...companyContext.values()];
+    reference.innerHTML = '<option value="">Choose a previously searched company…</option>' + ordered.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('') + '<option value="__custom__">Enter another company…</option>';
+    help.hidden = ordered.length > 0;
+    const preferred = analyses[0]?.target || insights[0]?.criteria?.company || discoveries[0]?.criteria?.reference_company || '';
+    if (preferred && companyContext.has(preferred.toLocaleLowerCase())) {
+      reference.value = preferred;
+      sourceContextId = companyContext.get(preferred.toLocaleLowerCase())?.sourceContextId || '';
+    } else if (ordered.length === 0) {
+      reference.value = '__custom__'; customWrap.hidden = false; customInput.required = true;
+    }
   }
-  form.querySelectorAll('input, select').forEach(el => {
-    el.addEventListener('input', () => { sourceContextId = ''; });
-    el.addEventListener('change', () => { sourceContextId = ''; });
+  populateSavedCompanies().catch(() => {
+    reference.innerHTML = '<option value="">Saved companies unavailable</option><option value="__custom__">Enter another company…</option>';
+    reference.value = '__custom__'; customWrap.hidden = false; customInput.required = true; help.hidden = true;
   });
-  (async () => {
-    try {
-      const [analyses, discoveries, insights] = await Promise.all([
-        ArcStore.allAnalyses(), ArcStore.allDiscoveries(), ArcStore.allInsights()
-      ]);
-      const latestAnalysis = analyses[0];
-      const latestInsight = insights[0];
-      const latestDiscovery = discoveries[0];
-      if (latestAnalysis) {
-        sourceContextId = `analysis:${latestAnalysis.analysis_id}`;
-        fillCriteria({
-          reference_company: latestAnalysis.target || latestAnalysis.acquirer || '',
-          sector: latestAnalysis.business?.sector || latestAnalysis.sector || latestAnalysis.report?.sector || '',
-          geography: latestAnalysis.geography || 'Canada', size_metric: 'revenue', size_band: 'Any size'
-        });
-      } else if (latestInsight) {
-        const prior = latestInsight.criteria || {};
-        sourceContextId = `insight:${latestInsight.id}`;
-        fillCriteria({reference_company:prior.company || '', sector:prior.sector || '', geography:prior.geography || 'Canada', size_metric:'revenue', size_band:'Any size'});
-      } else if (latestDiscovery) {
-        sourceContextId = latestDiscovery.source_context_id || '';
-        fillCriteria(latestDiscovery.criteria || latestDiscovery);
-      }
-      // Stored company context only pre-fills the search. The user must click Find comparable companies.
-    } catch (error) { console.warn('Previous company criteria could not be loaded.'); }
-  })();
 })();
 </script>{% endblock %}

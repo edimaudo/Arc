@@ -2,16 +2,11 @@
 {% block title %}Business Insights — Arc{% endblock %}
 {% block content %}
 <section class="wrap page-head"><div><h1>Business Insights</h1><p class="muted">Understand how a company or industry operates: its business model, market trends, customers and products, competitive position, risks, and what management should do next.</p></div></section>
-<section class="wrap product-purpose" aria-label="Business Insights purpose">
-    <div><strong>Business Insights answers</strong><p>What is happening in this business or market, and what should management do next?</p></div>
-    <div><strong>For a list of peer companies</strong><p>Use Discovery to identify businesses of similar industry and scale.</p><a class="text-link" href="/discovery">Open Discovery →</a></div>
-</section>
 <section class="wrap panel business-research-panel">
   <form id="business-insights-form">
-    <div class="two-col"><label>Previously searched company<select id="insight-company-select"><option value="">Choose a company…</option></select></label><label>Company (or enter a new name)<input id="insight-company" placeholder="Company name" autocomplete="organization"></label></div>
+    <label>Company<input id="insight-company" placeholder="Company name" autocomplete="organization"></label>
     <div class="two-col"><label>Industry (optional)<input id="insight-sector" placeholder="e.g. Retail, software, financial services"></label><label>Geography<input id="insight-geography" value="Canada" placeholder="Country or region"></label></div>
     <label>Focus<select id="insight-focus"><option>Overall business</option><option>Market and competitors</option><option>Customers and products</option><option>Growth opportunities</option><option>Operations and business risks</option></select></label>
-    <p class="muted">Best for understanding one business or an industry. The report focuses on what is happening, why it matters operationally, and what to monitor or do next.</p>
     <div><button class="button primary" id="run-business-insights" type="submit">Research business</button></div>
   </form>
 </section>
@@ -22,6 +17,7 @@
   const form = document.getElementById('business-insights-form');
   const button = document.getElementById('run-business-insights');
   const root = document.getElementById('business-insights-results');
+  const companyInput = document.getElementById('insight-company');
   let sourceContextId = '';
   const esc = v => String(v ?? '').replace(/\bqloo\b/gi, 'cultural data source').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const array = v => Array.isArray(v) ? v : [];
@@ -86,8 +82,6 @@
       const saved = {id:'insight-' + Date.now(), created_at:new Date().toISOString(), source_context_id:contextId || null, criteria, insights:data.insights || {}};
       await ArcStore.putInsight(saved);
       render(saved.insights, criteria, new Date(saved.created_at).toLocaleString());
-      await populateCompanyHistory();
-      companySelect.value = criteria.company || '';
     } catch (error) {
       const message = /fetch|network|load failed/i.test(error.message || '') ? 'Arc could not reach the research service. Your entered criteria are still here; try again in a moment.' : (error.message || 'Arc could not complete business research.');
       root.innerHTML = `<div class="empty-state"><h2>Business research is temporarily unavailable</h2><p class="muted">${esc(message)}</p><button class="button secondary" type="button" data-retry-business>Try again</button><p class="muted">If this continues, check the Gemini API key, model setting, quota and provider status in Vercel.</p></div>`;
@@ -100,12 +94,10 @@
     await research(criteria, sourceContextId);
   });
   form.querySelectorAll('input, select').forEach(el => {
-    el.addEventListener('input', () => { sourceContextId = ''; if (el.id === 'insight-company') companySelect.value = ''; });
+    el.addEventListener('input', () => { sourceContextId = ''; });
     el.addEventListener('change', () => { sourceContextId = ''; });
   });
-  const companySelect = document.getElementById('insight-company-select');
-  const companyInput = document.getElementById('insight-company');
-  async function populateCompanyHistory() {
+  async function prefillCompanyContext() {
     const [analyses, discoveries, insights] = await Promise.all([
       ArcStore.allAnalyses(), ArcStore.allDiscoveries(), ArcStore.allInsights()
     ]);
@@ -131,28 +123,19 @@
       addCompany(c.reference_company, c.sector, c.geography);
       for (const peer of array(item.comparables)) addCompany(peer.name, peer.sector || c.sector, peer.geography || c.geography);
     }
-    companySelect.innerHTML = '<option value="">Choose a company…</option>' + companies.map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
-    companySelect.onchange = () => {
-      const selected = companies.find(c => c.name === companySelect.value);
-      if (!selected) return;
-      companyInput.value = selected.name;
-      if (selected.sector && !document.getElementById('insight-sector').value.trim()) document.getElementById('insight-sector').value = selected.sector;
-      document.getElementById('insight-geography').value = selected.geography || 'Canada';
-      sourceContextId = '';
-    };
     const latestAnalysis = analyses[0];
     const latestInsight = insights[0];
     const latestDiscovery = discoveries[0];
     const preferred = latestAnalysis?.target || latestInsight?.criteria?.company || latestDiscovery?.criteria?.reference_company || '';
     if (preferred) {
       companyInput.value = preferred;
-      companySelect.value = preferred;
       const chosen = companies.find(c => c.name === preferred);
       if (chosen?.sector) document.getElementById('insight-sector').value = chosen.sector;
       if (chosen?.geography) document.getElementById('insight-geography').value = chosen.geography;
+      sourceContextId = latestAnalysis ? `analysis:${latestAnalysis.analysis_id}` : (latestInsight ? `insight:${latestInsight.id}` : (latestDiscovery ? `discovery:${latestDiscovery.id}` : ''));
     }
     // History populates choices and defaults only. It never starts research or restores an output.
   }
-  populateCompanyHistory().catch(error => console.warn('Previously searched companies could not be loaded.'));
+  prefillCompanyContext().catch(error => console.warn('Saved company context could not be loaded.'));
 })();
 </script>{% endblock %}

@@ -15,7 +15,7 @@ def test_public_landing_uses_correct_product_cards_and_no_internal_navigation():
         response = client.get('/')
     assert response.status_code == 200
     html = response.text
-    for expected in ['Start M&amp;A analysis', 'M&amp;A Analysis', 'Business Insights', 'Discovery']:
+    for expected in ['Start Acquisition Analysis', 'Acquisition Analysis', 'Business Insights', 'Discovery']:
         assert expected in html
     for forbidden in ['Find Companies', 'Business Owner', 'Financial Intelligence', 'Business Intelligence', 'Cultural Intelligence', 'Acquisition Intelligence', 'Qloo Intelligence']:
         assert forbidden not in html
@@ -82,11 +82,14 @@ def test_discovery_is_standalone_comparable_company_research():
     assert 'Find comparable companies' in html
     assert 'ArcStore.allAnalyses()' in html
     assert 'source_context_id' in html
-    assert 'Annual revenue' in html
-    assert 'Estimated company valuation' in html
-    assert 'Number of employees' in html
+    assert 'id=\"reference-company\"' in html
+    assert 'id=\"geography\"' in html
+    assert 'North America (Canada and United States)' in html
+    assert 'id=\"size-metric\"' not in html
+    assert 'id=\"size-band\"' not in html
+    assert 'Comparable size' not in html
     assert 'Acquisition thesis' not in html
-    assert 'Start M&amp;A analysis' not in html
+    assert 'Start Acquisition Analysis' not in html
     assert 'Investigate' not in html
 
 
@@ -121,9 +124,9 @@ def test_dashboard_lists_all_analyses_and_provides_delete_control():
     with TestClient(app, follow_redirects=False) as client:
         client.post('/demo-login', data={'next': '/dashboard'})
         html = client.get('/dashboard').text
-    assert 'Recent M&amp;A analyses' in html
+    assert 'Recent acquisition analyses' in html
     assert 'data-delete-analysis' in html
-    assert 'Open company research, review recent M&amp;A analyses, or discover comparable businesses.' not in html
+    assert 'Open company research, review recent Acquisition analyses, or discover comparable businesses.' not in html
 
 
 def test_mna_and_cultural_ui_does_not_expose_provider_or_shared_provider_metric():
@@ -138,14 +141,18 @@ def test_mna_and_cultural_ui_does_not_expose_provider_or_shared_provider_metric(
     assert 'Cultural categories' in pages[0]
 
 
-def test_business_insights_history_dropdown_and_no_auto_research_on_load():
+def test_business_insights_uses_one_company_field_and_does_not_auto_research_on_load():
     with TestClient(app, follow_redirects=False) as client:
         client.post('/demo-login', data={'next': '/dashboard'})
         html = client.get('/owner').text
-    assert 'insight-company-select' in html
+    assert 'id=\"insight-company\"' in html
+    assert 'insight-company-select' not in html
+    assert 'Previously searched company' not in html
+    assert 'Business Insights answers' not in html
+    assert 'Best for understanding one business' not in html
     assert 'Research report' not in html
-    assert 'populateCompanyHistory' in html
-    assert 'restore();' not in html
+    assert 'prefillCompanyContext' in html
+    assert 'form.requestSubmit()' in html  # only the explicit retry control uses this; load does not submit
 
 
 def test_discovery_does_not_show_or_run_saved_results_on_page_load():
@@ -153,6 +160,23 @@ def test_discovery_does_not_show_or_run_saved_results_on_page_load():
         client.post('/demo-login', data={'next': '/dashboard'})
         html = client.get('/discovery').text
     assert 'Need a business diagnosis?' not in html
-    boot = html[html.find('  (async () => {', html.find('function fillCriteria')): ]
-    assert 'form.requestSubmit()' not in boot
+    assert 'id=\"reference-company\"' in html
+    assert 'id=\"discovery-results\" hidden' in html
+    assert 'showResults(result.comparables,criteria)' in html
     assert 'showResults(latestDiscovery.comparables' not in html
+    assert 'form.requestSubmit()' in html  # explicit retry after a failed user-triggered search
+
+
+def test_acquisition_analysis_labels_sticky_tabs_and_no_print_controls():
+    with TestClient(app, follow_redirects=False) as client:
+        client.post('/demo-login', data={'next': '/dashboard'})
+        landing = client.get('/').text
+        nav = client.get('/analyst').text
+        created = client.post('/analysis/start', data={'acquirer':'Example Buyer','target':'Example Target','objective':'Full acquisition investigation','scopes':['financial']})
+        detail = client.get(f"/analysis/{created.json()['analysis']['analysis_id']}").text
+    assert 'Acquisition Analysis' in landing and 'Acquisition Analysis' in nav
+    assert 'M&amp;A Analysis' not in landing + nav + detail
+    assert 'analysis-tabs' in detail
+    assert 'position: sticky' in (Path(__file__).parents[1] / 'app' / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
+    for forbidden in ['id="print-analysis"', 'Print report', '>Print<', 'window.print()']:
+        assert forbidden not in detail

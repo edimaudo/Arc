@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}M&amp;A Analysis — Arc{% endblock %}
+{% block title %}Acquisition Analysis — Arc{% endblock %}
 {% block content %}
-<section class="wrap page-head"><div><h1>M&amp;A Analysis</h1><p class="muted">Choose an analysis to review its findings and supporting evidence.</p></div><a class="button primary" href="/analysis/new">Start M&amp;A analysis</a></section>
-<section class="wrap panel recent-panel analyst-analysis-list"><div class="panel-head"><h2>All M&amp;A analyses</h2></div><div id="analyst-workspace"><div class="empty-state"><h3>Loading analyses…</h3></div></div></section>
+<section class="wrap page-head"><div><h1>Acquisition Analysis</h1><p class="muted">Choose an analysis to review its findings and supporting evidence.</p></div><a class="button primary" href="/analysis/new">Start Acquisition Analysis</a></section>
+<section class="wrap panel recent-panel analyst-analysis-list"><div class="panel-head"><h2>All acquisition analyses</h2></div><div id="analyst-workspace"><div class="empty-state"><h3>Loading analyses…</h3></div></div></section>
 {% endblock %}
 {% block scripts %}<script>
 (async () => {
@@ -10,7 +10,7 @@
   const esc = v => String(v ?? '').replace(/\bqloo\b/gi, 'cultural data source').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function render(items) {
     if (!items.length) {
-      root.innerHTML = '<div class="empty-state"><h3>No M&amp;A analyses yet</h3><p class="muted">Start an analysis to compare two companies.</p><a class="button primary" href="/analysis/new">Start M&amp;A analysis</a></div>';
+      root.innerHTML = '<div class="empty-state"><h3>No acquisition analyses yet</h3><p class="muted">Start an acquisition analysis to compare two companies.</p><a class="button primary" href="/analysis/new">Start Acquisition Analysis</a></div>';
       return;
     }
     root.innerHTML = '<div class="recent-analysis-list">' + items.map(a => `
@@ -27,7 +27,7 @@
   root.addEventListener('click', async event => {
     const button = event.target.closest('[data-delete-analysis]');
     if (!button) return;
-    if (!window.confirm('Delete this saved M&A analysis? This cannot be undone.')) return;
+    if (!window.confirm('Delete this saved acquisition analysis? This cannot be undone.')) return;
     button.disabled = true; button.textContent = 'Deleting…';
     try { await ArcStore.deleteAnalysis(button.dataset.deleteAnalysis); await refresh(); }
     catch (error) { button.disabled = false; button.textContent = 'Delete'; window.alert('Could not delete this analysis: ' + (error.message || 'Browser storage error')); }

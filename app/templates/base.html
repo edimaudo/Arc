@@ -15,7 +15,7 @@
     <a class="wordmark" href="/">ARC</a>
     <nav aria-label="Primary">
       <a href="/dashboard"{% if request.url.path == '/dashboard' %} aria-current="page"{% endif %}>Dashboard</a>
-      <a href="/analyst"{% if request.url.path == '/analyst' or request.url.path.startswith('/analysis') %} aria-current="page"{% endif %}>M&amp;A Analysis</a>
+      <a href="/analyst"{% if request.url.path == '/analyst' or request.url.path.startswith('/analysis') %} aria-current="page"{% endif %}>Acquisition Analysis</a>
       <a href="/owner"{% if request.url.path == '/owner' %} aria-current="page"{% endif %}>Business Insights</a>
       <a href="/discovery"{% if request.url.path.startswith('/discovery') %} aria-current="page"{% endif %}>Discovery</a>
     </nav>

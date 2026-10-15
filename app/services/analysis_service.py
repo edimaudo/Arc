@@ -78,7 +78,7 @@ async def run_investigation(source: dict[str, Any]) -> dict[str, Any]:
                 if isinstance(item, dict):
                     result['findings'] = [{'type': item.get('type', 'Finding'), 'title': item.get('title', 'Preliminary finding'), 'body': item.get('body') or item.get('detail') or item.get('rationale') or 'Review the supporting evidence and open questions.', 'evidence': item.get('evidence', 'See supporting report sections.')}]
     except Exception as exc:
-        logger.exception('Live M&A research failed; returning a clearly labelled starter analysis.')
+        logger.exception('Live acquisition research failed; returning a clearly labelled starter analysis.')
         result = _limited_investigation(analysis, friendly_api_error(exc, 'Live research service'))
 
     analysis['status'] = 'Limited analysis — live research unavailable' if result.get('limited_mode') else 'Investigation complete'

@@ -471,7 +471,7 @@ input, select, textarea { border-radius: 3px; min-height: 46px; }
 .source-list li + li { margin-top: 10px; }
 .report-timestamp { font-size: .82rem; }
 .discovery-command form { gap: 20px; }
-.discovery-command .discovery-actions { margin-top: 2px; }
+.discovery-command .discovery-actions { margin-top: 2px; justify-content: flex-end; }
 .discovery-help { max-width: 620px; }
 .comparable-card .candidate-top { align-items: center; }
 .comparable-card .candidate-top .text-link { flex: 0 0 auto; }
@@ -575,4 +575,23 @@ input, select, textarea { border-radius: 3px; min-height: 46px; }
   .recent-analysis-row { grid-template-columns: minmax(0, 1fr) auto; gap: 14px; }
   .recent-analysis-meta { grid-column: 1; grid-row: 2; }
   .delete-analysis-button { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+}
+
+
+/* Acquisition Analysis section navigation remains visible while reading long reports. */
+.analysis-tabs {
+  position: sticky;
+  top: 62px;
+  z-index: 15;
+  background: var(--bg);
+  padding: 8px 0 0;
+  box-shadow: 0 1px 0 var(--line);
+  scroll-margin-top: 140px;
+}
+.analysis-tabs a { scroll-margin-top: 150px; }
+.analysis-tabs ~ section[id] { scroll-margin-top: 150px; }
+@media (max-width: 900px) { .analysis-tabs { top: 96px; } }
+@media (max-width: 640px) {
+  .analysis-tabs { top: 102px; gap: 16px; padding-top: 8px; }
+  .analysis-tabs a { font-size: .82rem; }
 }

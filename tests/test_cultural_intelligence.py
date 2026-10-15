@@ -105,7 +105,7 @@ def test_business_insights_and_discovery_both_include_qloo_culture():
     agent.qloo = FakeQloo()
 
     async def grounded(prompt):
-        if 'Find 6-10 real operating companies' in prompt:
+        if 'Discover EXACTLY the top 5 real operating companies' in prompt:
             data = {"comparables": [{
                 "name": "Comparable One", "sector": "Consumer", "geography": "Canada",
                 "business_summary": "Consumer brand.", "comparability_reason": "Similar scale and sector.",
@@ -144,7 +144,7 @@ def test_all_three_workspaces_show_disabled_getting_results_and_cultural_section
     assert "Qloo" not in analysis
     assert "button.disabled = true; button.setAttribute('aria-busy', 'true'); button.textContent = 'Getting results…'" in business
     assert "Culture, audience and brand affinity" in business
-    assert "button.disabled = true; button.setAttribute('aria-busy', 'true'); button.textContent = 'Getting results…'" in discovery
+    assert "button.disabled = true; button.setAttribute('aria-busy','true'); button.classList.add('is-loading'); button.textContent = 'Getting results…'" in discovery
     assert "Cultural profile" in discovery
     assert "Cross-company cultural signals" not in discovery  # Discovery is about peer lists, not the backend mechanism
     assert "Qloo" not in business
@@ -167,3 +167,36 @@ def test_business_insights_keeps_qloo_culture_when_gemini_is_unavailable():
     assert "not verified" in report["business_overview"]
     assert report["cultural_intelligence"]["qloo_profile"]["status"] == "available"
     assert report["cultural_intelligence"]["qloo_profile"]["categories"]
+
+
+def test_discovery_returns_top_five_and_considers_all_scale_criteria():
+    agent = ArcAgent()
+    agent.api_key = "test-key"
+    captured = {}
+
+    async def grounded(prompt):
+        captured["prompt"] = prompt
+        return {"data": {"comparables": [
+            {"name": f"Peer {i}", "annual_revenue_estimate": f"${i} million", "company_valuation_estimate": f"${i * 2} million", "employee_count_estimate": i * 10, "sources": []}
+            for i in range(1, 8)
+        ]}, "steps": []}
+
+    async def enrich(peers, reference, geography):
+        captured["enriched_count"] = len(peers)
+        captured["geography"] = geography
+        return [dict(peer, cultural_intelligence={"status": "available"}) for peer in peers]
+
+    agent._web_search_json = grounded
+    agent._enrich_comparables_with_culture = enrich
+    result = asyncio.run(agent.find_comparable_companies({
+        "reference_company": "Reference Co",
+        "geography": "North America (Canada and United States)",
+    }))
+
+    assert len(result["comparables"]) == 5
+    assert captured["enriched_count"] == 5
+    assert captured["geography"] == "North America (Canada and United States)"
+    prompt = captured["prompt"]
+    assert "EXACTLY the top 5" in prompt
+    assert "annual revenue" in prompt and "company valuation" in prompt and "employee count" in prompt
+    assert "Canada and the United States" in prompt

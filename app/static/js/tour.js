@@ -11,10 +11,10 @@
   const close = document.getElementById('tour-close');
   const steps = [
     {title:'Welcome to Arc', description:'Arc has three independent tools. You can use any of them without first completing another part of the app.'},
-    {title:'M&A Analysis', description:'Choose a buyer and target. Arc researches both companies and compares financial evidence, products, markets, customer overlap, culture and integration considerations. Documents are optional; they add evidence but do not start or unlock the analysis.'},
+    {title:'Acquisition Analysis', description:'Choose a buyer and target. Arc researches both companies and compares financial evidence, products, markets, customer overlap, culture and integration considerations. Documents are optional; they add evidence but do not start or unlock the analysis.'},
     {title:'Business Insights', description:'Understand how one company or industry operates and competes. Get a business brief covering its model, market trends, customers and products, competitors, operational risks, growth opportunities, practical actions and metrics. It does not create a peer-company shortlist.'},
-    {title:'Discovery', description:'Build a peer group of 6–10 companies in a similar industry and business size. Results list comparable companies with revenue, valuation or employee estimates where public, plus the evidence explaining each match. It does not produce an operating diagnosis or acquisition-fit score.'},
-    {title:'Working with results', description:'Use linked sources to verify claims. Company and industry research is saved in this browser, and M&A investigations can be exported as PDF. If live research is temporarily unavailable, Arc shows a clearly labelled starter analysis or an actionable retry message rather than pretending research succeeded.'}
+    {title:'Discovery', description:'Choose a company already researched in Arc and a geography. Discovery returns the top five aligned companies using available revenue, valuation, employee count, industry, business model and cultural/audience context. Results appear only after you select Find comparable companies.'},
+    {title:'Working with results', description:'Use linked sources to verify claims. Company and industry research is saved in this browser, and Acquisition analyses can be exported as PDF. If live research is temporarily unavailable, Arc shows a clearly labelled starter analysis or an actionable retry message rather than pretending research succeeded.'}
   ];
   let current = 0;
   function render() {

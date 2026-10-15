@@ -42,7 +42,6 @@ async def business_insights_api(request: Request):
         'company': company,
         'sector': sector,
         'geography': str(payload.get('geography') or 'Canada').strip() or 'Canada',
-        'focus': str(payload.get('focus') or 'Overall business').strip(),
     }
     try:
         result = await _agent.research_business_insights(criteria)

@@ -177,6 +177,47 @@ def test_acquisition_analysis_labels_sticky_tabs_and_no_print_controls():
     assert 'Acquisition Analysis' in landing and 'Acquisition Analysis' in nav
     assert 'M&amp;A Analysis' not in landing + nav + detail
     assert 'analysis-tabs' in detail
+    assert 'data-culture-tab="acquirer"' in detail
+    assert 'data-culture-tab="target"' in detail
+    assert 'data-culture-tab="cross-company"' in detail
+    assert 'data-culture-tab="implications"' in detail
+    assert 'initAnalysisNavigation' in detail
+    assert 'Analyst activity' not in detail
+    assert 'Diligence boundary' not in detail
+    report_service = (Path(__file__).parents[1] / 'app' / 'services' / 'report_service.py').read_text(encoding='utf-8')
+    assert 'Diligence boundary' not in report_service
+    assert 'activity' not in detail
+    assert '/100' not in detail
     assert 'position: sticky' in (Path(__file__).parents[1] / 'app' / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
     for forbidden in ['id="print-analysis"', 'Print report', '>Print<', 'window.print()']:
         assert forbidden not in detail
+
+
+def test_company_dropdowns_only_use_companies_from_saved_search_results():
+    root = Path(__file__).parents[1] / 'app' / 'templates'
+    owner = (root / 'owner.html').read_text(encoding='utf-8')
+    discovery = (root / 'discovery.html').read_text(encoding='utf-8')
+    assert '<select id="insight-company"' in owner
+    assert "addCompany(c.company, context)" in owner
+    assert "addCompany(c.company || item.insights?.company" not in owner
+    assert '<select id="reference-company"' in discovery
+    assert 'id="refresh-shortlist" type="submit" disabled' in discovery
+    assert "if (!a.completed_at) continue;" in discovery
+    assert "__custom__" not in discovery
+    assert "custom-company" not in discovery
+    assert "Enter another company" not in discovery
+    assert "item.insights?.company" not in discovery
+
+
+def test_acquisition_cultural_tabs_hide_nonselected_panels_and_track_section_scroll():
+    root = Path(__file__).parents[1] / 'app' / 'templates'
+    analysis = (root / 'analysis.html').read_text(encoding='utf-8')
+    css = (Path(__file__).parents[1] / 'app' / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
+    assert 'data-culture-tab="acquirer"' in analysis
+    assert 'data-culture-tab="target"' in analysis
+    assert 'data-culture-tab="cross-company"' in analysis
+    assert 'data-culture-tab="implications"' in analysis
+    assert "panel.hidden = panel.dataset.culturePanel !== key" in analysis
+    assert "new IntersectionObserver" in analysis
+    assert ".analysis-tabs a.active" in css
+    assert "Math.round(n >= 0 && n <= 1 ? n * 100 : n)}%`" in analysis

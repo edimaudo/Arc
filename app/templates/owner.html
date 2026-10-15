@@ -4,9 +4,8 @@
 <section class="wrap page-head"><div><h1>Business Insights</h1><p class="muted">Understand how a company or industry operates: its business model, market trends, customers and products, competitive position, risks, and what management should do next.</p></div></section>
 <section class="wrap panel business-research-panel">
   <form id="business-insights-form">
-    <label>Company<input id="insight-company" placeholder="Company name" autocomplete="organization"></label>
+    <label>Company<select id="insight-company" aria-describedby="company-history-help"><option value="">Choose a previously searched company…</option></select></label><p class="muted" id="company-history-help">Only companies with a saved search appear here. You can also research an industry below.</p>
     <div class="two-col"><label>Industry (optional)<input id="insight-sector" placeholder="e.g. Retail, software, financial services"></label><label>Geography<input id="insight-geography" value="Canada" placeholder="Country or region"></label></div>
-    <label>Focus<select id="insight-focus"><option>Overall business</option><option>Market and competitors</option><option>Customers and products</option><option>Growth opportunities</option><option>Operations and business risks</option></select></label>
     <div><button class="button primary" id="run-business-insights" type="submit">Research business</button></div>
   </form>
 </section>
@@ -18,10 +17,13 @@
   const button = document.getElementById('run-business-insights');
   const root = document.getElementById('business-insights-results');
   const companyInput = document.getElementById('insight-company');
-  let sourceContextId = '';
+  const sectorInput = document.getElementById('insight-sector');
+  const geographyInput = document.getElementById('insight-geography');
+  const searchedCompanies = new Map();
+  let sourceContextId = ''; 
   const esc = v => String(v ?? '').replace(/\bqloo\b/gi, 'cultural data source').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const array = v => Array.isArray(v) ? v : [];
-  const formatAffinity = value => { const n = Number(value); if (!Number.isFinite(n)) return String(value ?? ''); return `${Math.round(n >= 0 && n <= 1 ? n * 100 : n)}/100`; };
+  const formatAffinity = value => { const n = Number(value); if (!Number.isFinite(n)) return String(value ?? ''); return `${Math.round(n >= 0 && n <= 1 ? n * 100 : n)}%`; };
   function textItem(item) { return typeof item === 'string' ? item : (item?.detail || item?.summary || item?.reason || item?.description || item?.action || ''); }
   function listPanel(title, values) {
     const body = values.length
@@ -56,8 +58,8 @@
     const publicContext = cultural.public_context || {};
     const publicRows = Object.entries(publicContext).filter(([key, value]) => !['sources'].includes(key.toLowerCase()) && value && (Array.isArray(value) ? value.length : true));
     const publicHTML = publicRows.length ? publicRows.map(([key, value]) => `<article><h3>${esc(key.replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase()))}</h3><p>${esc(Array.isArray(value) ? value.map(textItem).filter(Boolean).join(' · ') : (typeof value === 'object' ? JSON.stringify(value) : value))}</p></article>`).join('') : '<p class="muted">The public-source cultural profile was not returned in this run.</p>';
-    const qlooHTML = categories.length ? `<div class="cultural-category-grid">${categories.map(category => `<section class="cultural-category"><h3>${esc(category.label || category.entity_type || 'Cultural category')}</h3><ul class="cultural-signal-list">${array(category.results).slice(0, 6).map(item => `<li><span class="cultural-signal-name">${esc(item.name || 'Affinity')}</span>${item.affinity !== null && item.affinity !== undefined ? `<span class="cultural-affinity">${esc(formatAffinity(item.affinity))} affinity</span>` : ''}${explainabilityText(item.explainability, profile) ? `<details class="cultural-explanation"><summary>Why this appeared</summary><p>${esc(explainabilityText(item.explainability, profile))}</p></details>` : ''}</li>`).join('')}</ul>${explainabilityText(category.explainability, profile) ? `<details class="cultural-explanation"><summary>What influenced this category</summary><p>${esc(explainabilityText(category.explainability, profile))}</p></details>` : ''}</section>`).join('')}</div>` : `<p class="muted">${esc(profile.note || 'No category-level cultural recommendations were returned for this company or industry in this run. Public-source cultural context is shown separately.')}</p>`;
-    return `<section class="panel insight-panel cultural-section"><h2>Culture, audience and brand affinity</h2><p>Arc combines sourced information about customer identity, brand positioning and cultural trends with cultural affinity signals. Cultural affinity signals are directional—not a direct measure of sales or guaranteed customer overlap.</p><h3>Public-source cultural context</h3><div class="insight-list">${publicHTML}</div><h3>Cultural affinity profile</h3>${profile.matched_entities?.length ? `<p class="muted">Company identity match: ${esc(profile.matched_entities.map(item => item.name).join(', '))}</p>` : ''}${qlooHTML}${topSignals.length ? `<h3>Top affinity signals across categories</h3><div class="cultural-tags">${topSignals.map(item => `<span class="cultural-tag">${esc(item.name)}${item.category ? ' · ' + esc(item.category) : ''}${item.affinity !== null && item.affinity !== undefined ? ' · ' + esc(formatAffinity(item.affinity)) + ' affinity' : ''}</span>`).join('')}</div>` : ''}<p class="cultural-note">${esc(cultural.interpretation_note || profile.note || 'Interpret cultural affinity as directional taste context; validate it against customer research and business evidence.')}</p></section>`;
+    const qlooHTML = categories.length ? `<div class="cultural-category-grid">${categories.map(category => `<section class="cultural-category"><h3>${esc(category.label || category.entity_type || 'Cultural category')}</h3><ul class="cultural-signal-list">${array(category.results).slice(0, 6).map(item => `<li><span class="cultural-signal-name">${esc(item.name || 'Affinity')}</span>${item.affinity !== null && item.affinity !== undefined ? `<span class="cultural-affinity">${esc(formatAffinity(item.affinity))}</span>` : ''}${explainabilityText(item.explainability, profile) ? `<details class="cultural-explanation"><summary>Why this appeared</summary><p>${esc(explainabilityText(item.explainability, profile))}</p></details>` : ''}</li>`).join('')}</ul>${explainabilityText(category.explainability, profile) ? `<details class="cultural-explanation"><summary>What influenced this category</summary><p>${esc(explainabilityText(category.explainability, profile))}</p></details>` : ''}</section>`).join('')}</div>` : `<p class="muted">${esc(profile.note || 'No category-level cultural recommendations were returned for this company or industry in this run. Public-source cultural context is shown separately.')}</p>`;
+    return `<section class="panel insight-panel cultural-section"><h2>Culture, audience and brand affinity</h2><p>Arc combines sourced information about customer identity, brand positioning and cultural trends with cultural affinity signals. Cultural affinity signals are directional—not a direct measure of sales or guaranteed customer overlap.</p><h3>Public-source cultural context</h3><div class="insight-list">${publicHTML}</div><h3>Cultural affinity profile</h3>${profile.matched_entities?.length ? `<p class="muted">Company identity match: ${esc(profile.matched_entities.map(item => item.name).join(', '))}</p>` : ''}${qlooHTML}${topSignals.length ? `<h3>Top affinity signals across categories</h3><div class="cultural-tags">${topSignals.map(item => `<span class="cultural-tag">${esc(item.name)}${item.category ? ' · ' + esc(item.category) : ''}${item.affinity !== null && item.affinity !== undefined ? ' · ' + esc(formatAffinity(item.affinity)) : ''}</span>`).join('')}</div>` : ''}<p class="cultural-note">${esc(cultural.interpretation_note || profile.note || 'Interpret cultural affinity as directional taste context; validate it against customer research and business evidence.')}</p></section>`;
   }
   function render(report, criteria, savedAt) {
     const competitors = array(report.competitive_landscape);
@@ -90,51 +92,58 @@
   }
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    const criteria = {company:document.getElementById('insight-company').value.trim(), sector:document.getElementById('insight-sector').value.trim(), geography:document.getElementById('insight-geography').value.trim() || 'Canada', focus:document.getElementById('insight-focus').value};
+    const criteria = {company:companyInput.value.trim(), sector:sectorInput.value.trim(), geography:geographyInput.value.trim() || 'Canada'};
     await research(criteria, sourceContextId);
   });
-  form.querySelectorAll('input, select').forEach(el => {
-    el.addEventListener('input', () => { sourceContextId = ''; });
-    el.addEventListener('change', () => { sourceContextId = ''; });
+  companyInput.addEventListener('change', () => {
+    const chosen = searchedCompanies.get(companyInput.value.toLocaleLowerCase());
+    sourceContextId = chosen?.sourceContextId || '';
+    if (chosen?.sector) sectorInput.value = chosen.sector;
+    if (chosen?.geography) geographyInput.value = chosen.geography;
   });
   async function prefillCompanyContext() {
     const [analyses, discoveries, insights] = await Promise.all([
       ArcStore.allAnalyses(), ArcStore.allDiscoveries(), ArcStore.allInsights()
     ]);
-    const companies = [];
-    const seen = new Set();
-    const addCompany = (name, sector = '', geography = 'Canada') => {
+    const addCompany = (name, context = {}) => {
       const value = String(name || '').trim();
       const key = value.toLocaleLowerCase();
-      if (!value || seen.has(key)) return;
-      seen.add(key); companies.push({name:value, sector:String(sector || ''), geography:String(geography || 'Canada')});
+      if (!value) return;
+      const previous = searchedCompanies.get(key);
+      const createdAt = String(context.createdAt || '');
+      if (!previous || createdAt.localeCompare(previous.createdAt || '') > 0) {
+        searchedCompanies.set(key, {name:value, sector:String(context.sector || ''), geography:String(context.geography || 'Canada'), sourceContextId:context.sourceContextId || '', createdAt});
+      }
     };
+    // A started draft is not a searched company. Completed and limited runs have a completion timestamp.
     for (const a of analyses) {
-      addCompany(a.target, a.business?.sector || a.sector, a.geography);
-      addCompany(a.acquirer, a.business?.sector || a.sector, a.geography);
+      if (!a.completed_at) continue;
+      const context = {sector:a.business?.sector || a.sector || a.report?.sector || '', geography:a.geography || 'Canada', sourceContextId:`analysis:${a.analysis_id}`, createdAt:a.completed_at || a.updated_at || a.created_at};
+      addCompany(a.target, context); addCompany(a.acquirer, context);
     }
+    // Insight and discovery rows are persisted only after the user explicitly ran those searches.
     for (const item of insights) {
       const c = item.criteria || {};
-      addCompany(c.company || item.insights?.company, c.sector || item.insights?.sector, c.geography || item.insights?.geography);
-      for (const competitor of array(item.insights?.competitive_landscape)) addCompany(competitor.name, c.sector || item.insights?.sector, c.geography || item.insights?.geography);
+      const context = {sector:c.sector || item.insights?.sector || '', geography:c.geography || item.insights?.geography || 'Canada', sourceContextId:`insight:${item.id}`, createdAt:item.created_at};
+      addCompany(c.company, context);
+      for (const competitor of array(item.insights?.competitive_landscape)) addCompany(competitor.name, context);
     }
     for (const item of discoveries) {
       const c = item.criteria || item;
-      addCompany(c.reference_company, c.sector, c.geography);
-      for (const peer of array(item.comparables)) addCompany(peer.name, peer.sector || c.sector, peer.geography || c.geography);
+      const context = {sector:c.sector || '', geography:c.geography || 'Canada', sourceContextId:item.source_context_id || `discovery:${item.id}`, createdAt:item.created_at};
+      addCompany(c.reference_company, context);
+      for (const peer of array(item.comparables)) addCompany(peer.name, {...context, sector:peer.sector || context.sector, geography:peer.geography || context.geography});
     }
-    const latestAnalysis = analyses[0];
-    const latestInsight = insights[0];
-    const latestDiscovery = discoveries[0];
-    const preferred = latestAnalysis?.target || latestInsight?.criteria?.company || latestDiscovery?.criteria?.reference_company || '';
+    const companies = [...searchedCompanies.values()].sort((a,b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    companyInput.innerHTML = '<option value="">Choose a previously searched company…</option>' + companies.map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+    const preferred = companies[0];
     if (preferred) {
-      companyInput.value = preferred;
-      const chosen = companies.find(c => c.name === preferred);
-      if (chosen?.sector) document.getElementById('insight-sector').value = chosen.sector;
-      if (chosen?.geography) document.getElementById('insight-geography').value = chosen.geography;
-      sourceContextId = latestAnalysis ? `analysis:${latestAnalysis.analysis_id}` : (latestInsight ? `insight:${latestInsight.id}` : (latestDiscovery ? `discovery:${latestDiscovery.id}` : ''));
+      companyInput.value = preferred.name;
+      sourceContextId = preferred.sourceContextId;
+      if (preferred.sector) sectorInput.value = preferred.sector;
+      if (preferred.geography) geographyInput.value = preferred.geography;
     }
-    // History populates choices and defaults only. It never starts research or restores an output.
+    // No company is manually entered or invented. Industry-only research remains available.
   }
   prefillCompanyContext().catch(error => console.warn('Saved company context could not be loaded.'));
 })();

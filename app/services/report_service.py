@@ -70,8 +70,6 @@ def build_report_pdf(analysis: dict[str, Any]) -> bytes:
     story.append(Paragraph(f'<b>Shared affinities:</b> {_esc(", ".join(map(str, cultural.get("shared", [])))) or "Not established"}', styles['ArcBody']))
     story.append(Paragraph(f'<b>Distinct territory:</b> {_esc(", ".join(map(str, cultural.get("distinct", [])))) or "Not established"}', styles['ArcBody']))
 
-    story.append(Spacer(1, 12))
-    story.append(Paragraph('Diligence boundary: Arc provides decision support. Material findings should be validated through conventional financial, legal, tax, HR, operational and commercial diligence.', styles['ArcSmall']))
     doc.build(story)
     return buffer.getvalue()
 

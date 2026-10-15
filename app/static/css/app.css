@@ -595,3 +595,15 @@ input, select, textarea { border-radius: 3px; min-height: 46px; }
   .analysis-tabs { top: 102px; gap: 16px; padding-top: 8px; }
   .analysis-tabs a { font-size: .82rem; }
 }
+
+
+/* The active analysis section is reflected in the sticky tab underline. */
+.analysis-tabs a { border-bottom: 2px solid transparent; color: var(--muted); transition: color .15s ease, border-color .15s ease; }
+.analysis-tabs a.active { border-bottom-color: var(--accent); color: var(--text); font-weight: 600; }
+.culture-tabs { display: flex; flex-wrap: nowrap; gap: 22px; overflow-x: auto; margin: 24px 0 20px; border-bottom: 1px solid var(--line); }
+.culture-tabs button { flex: 0 0 auto; border: 0; border-bottom: 2px solid transparent; margin: 0 0 -1px; padding: 12px 0; background: transparent; color: var(--muted); font: inherit; font-size: .9rem; cursor: pointer; }
+.culture-tabs button.active { border-bottom-color: var(--accent); color: var(--text); font-weight: 600; }
+.culture-tab-panel[hidden] { display: none !important; }
+.culture-tab-panel { min-width: 0; padding: 4px 0 8px; }
+.culture-tab-panel > h3:first-child { margin-top: 4px; }
+@media (max-width: 640px) { .culture-tabs { gap: 18px; } .culture-tabs button { font-size: .84rem; } }

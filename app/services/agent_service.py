@@ -614,7 +614,6 @@ class ArcAgent:
         company = str(args.get("company") or "").strip()
         sector = str(args.get("sector") or "").strip()
         geography = str(args.get("geography") or "Canada").strip() or "Canada"
-        focus = str(args.get("focus") or "Overall business").strip() or "Overall business"
         prompt = (
             "Produce practical, current BUSINESS INSIGHTS about the named company and/or industry. "
             "This is ordinary business research, not acquisition analysis: do not discuss acquisitions, deal fit, integration, buyers, sellers, or transaction rationale. "
@@ -631,7 +630,8 @@ class ArcAgent:
             "separate facts from interpretation, and never invent revenue, market share, financial metrics, URLs, or sources. "
             "For unavailable information, state that it is not publicly disclosed rather than guessing. Prioritize actionable observations over generic advice.\n"
             f"COMPANY: {company or 'Not specified'}\nSECTOR: {sector or 'Infer from company if supported'}\n"
-            f"GEOGRAPHY: {geography}\nFOCUS: {focus}"
+            f"GEOGRAPHY: {geography}\n"
+            "Cover every business area in the schema on every run; do not narrow the report to a single selected focus. "
         )
         subject = company or sector
         async def bounded_qloo_profile():

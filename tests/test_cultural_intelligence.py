@@ -200,3 +200,27 @@ def test_discovery_returns_top_five_and_considers_all_scale_criteria():
     assert "EXACTLY the top 5" in prompt
     assert "annual revenue" in prompt and "company valuation" in prompt and "employee count" in prompt
     assert "Canada and the United States" in prompt
+
+
+def test_business_insights_prompt_always_covers_all_focus_areas():
+    agent = ArcAgent()
+    agent.api_key = "test-key"
+    captured = {}
+
+    async def grounded(prompt):
+        captured["prompt"] = prompt
+        return {"data": {"company": "Northstar Foods", "business_overview": "Overview", "current_trends": [],
+                         "competitive_landscape": [], "customer_and_product_signals": [], "growth_opportunities": [],
+                         "business_risks": [], "recommended_actions": [], "key_metrics_to_watch": [], "sources": []}, "steps": []}
+
+    async def qloo_profile(subject, geography):
+        return {"status": "available", "subject": subject, "matched_entities": [], "categories": [], "top_affinities": []}
+
+    agent._web_search_json = grounded
+    agent._qloo_profile_for_query = qloo_profile
+    asyncio.run(agent.research_business_insights({"company": "Northstar Foods", "geography": "Canada", "focus": "Market and competitors"}))
+    prompt = captured["prompt"]
+    assert "Cover every business area in the schema on every run" in prompt
+    assert "FOCUS:" not in prompt
+    for required in ["business_overview", "current_trends", "competitive_landscape", "customer_and_product_signals", "growth_opportunities", "business_risks", "recommended_actions", "key_metrics_to_watch", "cultural_context"]:
+        assert required in prompt

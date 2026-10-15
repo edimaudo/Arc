@@ -4,11 +4,10 @@
 <section class="wrap page-head"><div><h1>Discovery</h1><p class="muted">Discover the top 5 companies aligned with the company you’re looking at.</p></div></section>
 <section class="wrap panel discovery-command">
   <form id="discovery-form">
-    <label>Company<select id="reference-company" required><option value="">Loading saved companies…</option><option value="__custom__">Enter another company…</option></select></label>
-    <div id="custom-company-wrap" hidden><label for="custom-company">Company name<input id="custom-company" placeholder="Company name" autocomplete="organization"></label></div>
+    <label>Company<select id="reference-company" required><option value="">Loading previously searched companies…</option></select></label>
     <label>Geography<select id="geography"><option value="North America (Canada and United States)" selected>North America (Canada and United States)</option><option value="Canada">Canada</option><option value="United States">United States</option></select></label>
-    <p class="muted discovery-help" id="company-help" hidden>Search a company in Acquisition Analysis or Business Insights first, or choose “Enter another company”.</p>
-    <div class="discovery-actions"><button class="button primary" id="refresh-shortlist" type="submit">Find comparable companies</button></div>
+    <p class="muted discovery-help" id="company-help" hidden>Search a company in Acquisition Analysis or Business Insights first. Only companies with a saved search appear here.</p>
+    <div class="discovery-actions"><button class="button primary" id="refresh-shortlist" type="submit" disabled>Find comparable companies</button></div>
   </form>
 </section>
 <section class="wrap discovery-results" id="discovery-results" hidden>
@@ -21,8 +20,6 @@
   const form = document.getElementById('discovery-form');
   const reference = document.getElementById('reference-company');
   const geography = document.getElementById('geography');
-  const customWrap = document.getElementById('custom-company-wrap');
-  const customInput = document.getElementById('custom-company');
   const help = document.getElementById('company-help');
   const button = document.getElementById('refresh-shortlist');
   const results = document.getElementById('discovery-results');
@@ -32,17 +29,20 @@
   let sourceContextId = '';
   const esc = v => String(v ?? '').replace(/\bqloo\b/gi, 'cultural data source').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const array = v => Array.isArray(v) ? v : [];
-  const formatAffinity = value => { const n = Number(value); if (!Number.isFinite(n)) return String(value ?? ''); return `${Math.round(n >= 0 && n <= 1 ? n * 100 : n)}/100`; };
+  const formatAffinity = value => { const n = Number(value); if (!Number.isFinite(n)) return String(value ?? ''); return `${Math.round(n >= 0 && n <= 1 ? n * 100 : n)}%`; };
 
   function addCompany(name, context = {}) {
     const value = String(name || '').trim();
     if (!value) return;
     const key = value.toLocaleLowerCase();
-    if (!companyContext.has(key)) companyContext.set(key, {
+    const previous = companyContext.get(key);
+    const createdAt = String(context.createdAt || '');
+    if (!previous || createdAt.localeCompare(previous.createdAt || '') > 0) companyContext.set(key, {
       name: value,
       sector: String(context.sector || ''),
       geography: String(context.geography || 'North America (Canada and United States)'),
-      sourceContextId: context.sourceContextId || ''
+      sourceContextId: context.sourceContextId || '',
+      createdAt
     });
   }
   function sourceLinks(sources) {
@@ -78,7 +78,7 @@
     profile = profile || {};
     const categories = array(profile.categories).filter(c => array(c.results).length);
     const signals = array(profile.signals).length ? array(profile.signals) : array(profile.top_affinities);
-    const items = signals.length ? signals.slice(0,8).map(item => `<span class="cultural-tag">${esc(item.name || item.title || '')}${item.category || item.type ? ` · ${esc(item.category || item.type)}` : ''}${item.affinity !== null && item.affinity !== undefined ? ` · ${esc(formatAffinity(item.affinity))} affinity` : ''}</span>`).join('') : categories.flatMap(c => c.results.slice(0,3).map(x => `<span class="cultural-tag">${esc(x.name || '')}</span>`)).join('');
+    const items = signals.length ? signals.slice(0,8).map(item => `<span class="cultural-tag">${esc(item.name || item.title || '')}${item.category || item.type ? ` · ${esc(item.category || item.type)}` : ''}${item.affinity !== null && item.affinity !== undefined ? ` · ${esc(formatAffinity(item.affinity))}` : ''}</span>`).join('') : categories.flatMap(c => c.results.slice(0,3).map(x => `<span class="cultural-tag">${esc(x.name || '')}</span>`)).join('');
     const rowExplanations = signals.filter(item => explainabilityText(item.explainability, profile)).slice(0,4).map(item => `<details class="cultural-explanation"><summary>Why ${esc(item.name || 'this affinity')} appeared</summary><p>${esc(explainabilityText(item.explainability, profile))}</p></details>`).join('');
     const aggregateExplanation = explainabilityText(profile.explainability, profile);
     const matched = Array.isArray(profile.company_match) ? profile.company_match : array(profile.matched_entities).map(x => x.name);
@@ -101,21 +101,15 @@
   }
 
   reference.addEventListener('change', () => {
-    const isCustom = reference.value === '__custom__';
-    customWrap.hidden = !isCustom;
-    customInput.required = isCustom;
-    if (!isCustom) {
-      const company = companyContext.get(reference.value.toLocaleLowerCase());
-      sourceContextId = company?.sourceContextId || '';
-    } else sourceContextId = '';
+    const company = companyContext.get(reference.value.toLocaleLowerCase());
+    sourceContextId = company?.sourceContextId || '';
   });
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    const isCustom = reference.value === '__custom__';
-    const selected = isCustom ? {name:customInput.value.trim(), sector:'', geography:geography.value, sourceContextId:''} : companyContext.get(reference.value.toLocaleLowerCase());
+    const selected = companyContext.get(reference.value.toLocaleLowerCase());
     if (!selected?.name) {
       results.hidden = false;
-      list.innerHTML = '<div class="empty-state"><h3>Choose a company</h3><p class="muted">Select a previously searched company or enter another company.</p></div>';
+      list.innerHTML = '<div class="empty-state"><h3>No previously searched company selected</h3><p class="muted">Complete an Acquisition Analysis, Business Insights search, or Discovery search first. Only saved search results appear in this list.</p></div>';
       return;
     }
     const criteria = {reference_company:selected.name, sector:selected.sector || '', geography:geography.value};
@@ -141,35 +135,39 @@
   async function populateSavedCompanies() {
     const [analyses,discoveries,insights] = await Promise.all([ArcStore.allAnalyses(),ArcStore.allDiscoveries(),ArcStore.allInsights()]);
     for (const a of analyses) {
-      const context = {sector:a.business?.sector || a.sector || a.report?.sector || '',geography:a.geography || 'North America (Canada and United States)',sourceContextId:`analysis:${a.analysis_id}`};
+      // Do not expose draft company names until a research attempt has completed.
+      if (!a.completed_at) continue;
+      const context = {sector:a.business?.sector || a.sector || a.report?.sector || '',geography:a.geography || 'North America (Canada and United States)',sourceContextId:`analysis:${a.analysis_id}`,createdAt:a.completed_at || a.updated_at || a.created_at};
       addCompany(a.target,context); addCompany(a.acquirer,context);
     }
     for (const item of insights) {
       const c = item.criteria || {};
-      const context = {sector:c.sector || item.insights?.sector || '',geography:c.geography || 'North America (Canada and United States)',sourceContextId:`insight:${item.id}`};
-      addCompany(c.company || item.insights?.company,context);
+      const context = {sector:c.sector || item.insights?.sector || '',geography:c.geography || 'North America (Canada and United States)',sourceContextId:`insight:${item.id}`,createdAt:item.created_at};
+      addCompany(c.company,context);
       for (const competitor of array(item.insights?.competitive_landscape)) addCompany(competitor.name,context);
     }
     for (const item of discoveries) {
       const c = item.criteria || item;
-      const context = {sector:c.sector || '',geography:c.geography || 'North America (Canada and United States)',sourceContextId:item.source_context_id || `discovery:${item.id}`};
+      const context = {sector:c.sector || '',geography:c.geography || 'North America (Canada and United States)',sourceContextId:item.source_context_id || `discovery:${item.id}`,createdAt:item.created_at};
       addCompany(c.reference_company,context);
       for (const peer of array(item.comparables)) addCompany(peer.name,{...context,sector:peer.sector || context.sector,geography:peer.geography || context.geography});
     }
-    const ordered = [...companyContext.values()];
-    reference.innerHTML = '<option value="">Choose a previously searched company…</option>' + ordered.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('') + '<option value="__custom__">Enter another company…</option>';
+    const ordered = [...companyContext.values()].sort((a,b)=>(b.createdAt || '').localeCompare(a.createdAt || ''));
+    reference.innerHTML = '<option value="">Choose a previously searched company…</option>' + ordered.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+    reference.disabled = ordered.length === 0;
+    button.disabled = ordered.length === 0;
     help.hidden = ordered.length > 0;
-    const preferred = analyses[0]?.target || insights[0]?.criteria?.company || discoveries[0]?.criteria?.reference_company || '';
-    if (preferred && companyContext.has(preferred.toLocaleLowerCase())) {
-      reference.value = preferred;
-      sourceContextId = companyContext.get(preferred.toLocaleLowerCase())?.sourceContextId || '';
-    } else if (ordered.length === 0) {
-      reference.value = '__custom__'; customWrap.hidden = false; customInput.required = true;
+    if (ordered.length) {
+      reference.value = ordered[0].name;
+      sourceContextId = ordered[0].sourceContextId || '';
+    } else {
+      reference.innerHTML = '<option value="">No previously searched companies</option>';
+      sourceContextId = '';
     }
   }
   populateSavedCompanies().catch(() => {
-    reference.innerHTML = '<option value="">Saved companies unavailable</option><option value="__custom__">Enter another company…</option>';
-    reference.value = '__custom__'; customWrap.hidden = false; customInput.required = true; help.hidden = true;
+    reference.innerHTML = '<option value="">Saved companies unavailable</option>';
+    reference.disabled = true; button.disabled = true; help.hidden = false;
   });
 })();
 </script>{% endblock %}

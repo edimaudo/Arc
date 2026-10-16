@@ -29,7 +29,15 @@
   let sourceContextId = '';
   const esc = v => String(v ?? '').replace(/\bqloo\b/gi, 'cultural data source').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const array = v => Array.isArray(v) ? v : [];
-  const formatAffinity = value => { const n = Number(value); if (!Number.isFinite(n)) return String(value ?? ''); return `${Math.round(n >= 0 && n <= 1 ? n * 100 : n)}%`; };
+  const formatAffinity = value => {
+    if (value === null || value === undefined || value === '') return '';
+    const text = String(value).trim();
+    const ratio = text.match(/^(-?\d+(?:\.\d+)?)\s*\/\s*100(?:\s+.*)?$/i);
+    if (ratio) return `${Math.round(Number(ratio[1]))}%`;
+    const n = Number(text);
+    if (!Number.isFinite(n)) return text.replace(/\b(-?\d+(?:\.\d+)?)\s*\/\s*100\b/g, '$1%').replace(/\s+affinity\s*$/i, '');
+    return `${Math.round(n >= 0 && n <= 1 ? n * 100 : n)}%`;
+  };
 
   function addCompany(name, context = {}) {
     const value = String(name || '').trim();
@@ -143,14 +151,14 @@
     for (const item of insights) {
       const c = item.criteria || {};
       const context = {sector:c.sector || item.insights?.sector || '',geography:c.geography || 'North America (Canada and United States)',sourceContextId:`insight:${item.id}`,createdAt:item.created_at};
+      // Only retain the company the user actually researched, not competitors in its report.
       addCompany(c.company,context);
-      for (const competitor of array(item.insights?.competitive_landscape)) addCompany(competitor.name,context);
     }
     for (const item of discoveries) {
       const c = item.criteria || item;
       const context = {sector:c.sector || '',geography:c.geography || 'North America (Canada and United States)',sourceContextId:item.source_context_id || `discovery:${item.id}`,createdAt:item.created_at};
+      // Only retain the selected search anchor; discovered peers are not automatically searched.
       addCompany(c.reference_company,context);
-      for (const peer of array(item.comparables)) addCompany(peer.name,{...context,sector:peer.sector || context.sector,geography:peer.geography || context.geography});
     }
     const ordered = [...companyContext.values()].sort((a,b)=>(b.createdAt || '').localeCompare(a.createdAt || ''));
     reference.innerHTML = '<option value="">Choose a previously searched company…</option>' + ordered.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');

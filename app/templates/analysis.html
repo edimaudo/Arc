@@ -15,13 +15,37 @@
   const alertBox = document.getElementById('analysis-alert');
   const runButton = document.getElementById('run-investigation');
   let analysis = null;
-  const esc = value => String(value ?? '').replace(/\bqloo\b/gi, 'cultural data source').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const esc = value => String(value ?? '').replace(/\bqloo\b/gi, 'cultural data source').replace(/\b(-?\d+(?:\.\d+)?)\s*\/\s*100(?:\s+affinity)?\b/gi, '$1%').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const list = values => Array.isArray(values) ? values : [];
   const labelText = value => typeof value === 'object' && value !== null ? (value.name || value.title || JSON.stringify(value)) : String(value ?? '');
-  const formatAffinity = value => { const n = Number(value); if (!Number.isFinite(n)) return String(value ?? ''); return `${Math.round(n >= 0 && n <= 1 ? n * 100 : n)}%`; };
+  const formatAffinity = value => {
+    if (value === null || value === undefined || value === '') return '';
+    const text = String(value).trim();
+    const ratio = text.match(/^(-?\d+(?:\.\d+)?)\s*\/\s*100(?:\s+.*)?$/i);
+    if (ratio) return `${Math.round(Number(ratio[1]))}%`;
+    const n = Number(text);
+    if (!Number.isFinite(n)) return text.replace(/\b(-?\d+(?:\.\d+)?)\s*\/\s*100\b/g, '$1%').replace(/\s+affinity\s*$/i, '');
+    return `${Math.round(n >= 0 && n <= 1 ? n * 100 : n)}%`;
+  };
   const finding = (item, i) => `<article class="finding"><span class="tag ${item?.type === 'Risk' ? 'risk' : 'opportunity'}">${esc(item?.type || 'Finding')}</span><h3>${esc(item?.title || `Finding ${i+1}`)}</h3><p>${esc(item?.body || item?.rationale || '')}</p></article>`;
   const items = (values, empty) => list(values).length ? `<ul class="evidence-list">${values.map(v => `<li>${esc(labelText(v))}</li>`).join('')}</ul>` : `<p class="muted">${esc(empty)}</p>`;
-  const metric = (label, value) => `<div class="metric-card"><span>${esc(label)}</span><strong>${esc(value === null || value === undefined || value === '' ? '—' : value)}</strong>${Number.isFinite(Number(value)) && value !== null && value !== '' ? `<div class="bar"><i style="width:${Math.max(0, Math.min(100, Number(value)))}%"></i></div>` : ''}</div>`;
+  const scoreNumber = value => {
+    if (value === null || value === undefined || value === '') return null;
+    const text = String(value).trim();
+    const ratio = text.match(/^(-?\d+(?:\.\d+)?)\s*\/\s*100(?:\s+affinity)?$/i);
+    if (ratio) return Number(ratio[1]);
+    const n = Number(text);
+    if (!Number.isFinite(n)) return null;
+    return n >= 0 && n <= 1 ? n * 100 : n;
+  };
+  const metric = (label, value) => {
+    const scoreLabel = ['Strategic fit', 'Audience expansion', 'Financial fit'].includes(label);
+    const score = scoreLabel ? scoreNumber(value) : null;
+    const numeric = scoreLabel ? score !== null : Number.isFinite(Number(value)) && value !== null && value !== '';
+    const display = scoreLabel && score !== null ? `${Math.round(score)}%` : (value === null || value === undefined || value === '' ? '—' : value);
+    const barValue = scoreLabel ? score : (numeric ? Number(value) : null);
+    return `<div class="metric-card"><span>${esc(label)}</span><strong>${esc(display)}</strong>${numeric ? `<div class="bar"><i style="width:${Math.max(0, Math.min(100, barValue))}%"></i></div>` : ''}</div>`;
+  };
   const displayDetail = item => typeof item === 'string' ? item : (item?.detail || item?.body || item?.summary || item?.reason || item?.implication || item?.description || item?.action || '');
   const cultureList = (values, empty) => {
     if (values === undefined || values === null || values === '') return `<p class="muted">${esc(empty)}</p>`;
@@ -77,12 +101,12 @@
         <div class="culture-tabs" role="tablist" aria-label="Cultural intelligence views">
           <button type="button" class="active" role="tab" aria-selected="true" data-culture-tab="acquirer">Acquirer profile</button>
           <button type="button" role="tab" aria-selected="false" data-culture-tab="target">Target profile</button>
-          <button type="button" role="tab" aria-selected="false" data-culture-tab="cross-company">Cross-company signals</button>
+          <button type="button" role="tab" aria-selected="false" data-culture-tab="cross-company">Cross-cultural signals</button>
           <button type="button" role="tab" aria-selected="false" data-culture-tab="implications">Business implications</button>
         </div>
         <div class="culture-tab-panel" role="tabpanel" data-culture-panel="acquirer"><h3>Acquirer company match</h3>${list(cul.acquirer_entities).length?list(cul.acquirer_entities).map(x=>`<span class="entity">${esc(labelText(x))}</span>`).join(''):'<p class="muted">No confident company identity match was returned for the acquirer.</p>'}${qlooProfileHTML('Acquirer cultural affinities', qlooSignals.acquirer_profile)}</div>
         <div class="culture-tab-panel" role="tabpanel" data-culture-panel="target" hidden><h3>Target company match</h3>${list(cul.target_entities).length?list(cul.target_entities).map(x=>`<span class="entity">${esc(labelText(x))}</span>`).join(''):'<p class="muted">No confident company identity match was returned for the target.</p>'}${qlooProfileHTML('Target cultural affinities', qlooSignals.target_profile)}</div>
-        <div class="culture-tab-panel" role="tabpanel" data-culture-panel="cross-company" hidden><h3>Cross-company cultural signals</h3><div class="affinity-box"><div><span>Common cultural affinities</span><strong>${cultureTags(qlooSignals.shared_affinities, 'No shared named affinities appeared in the returned top results.')}</strong></div><div><span>Distinctive acquirer affinities</span><strong>${cultureTags(qlooSignals.acquirer_distinctive, 'No distinctive acquirer signals were available.')}</strong></div><div><span>Distinctive target affinities</span><strong>${cultureTags(qlooSignals.target_distinctive, 'No distinctive target signals were available.')}</strong></div></div><h3>Related audience signals</h3>${cultureList(list(qlooSignals.comparison?.results).map(x=>({title:x.name || 'Related entity', detail:x.type || 'Cultural signal', affinity:x.affinity})), 'No cross-company recommendations were returned in this run.')}${cultureList(list(cul.source_evidence || cul.evidence), 'Public-source cultural evidence was not returned.')}</div>
+        <div class="culture-tab-panel" role="tabpanel" data-culture-panel="cross-company" hidden><h3>Cross-cultural signals</h3><div class="affinity-box"><div><span>Common cultural affinities</span><strong>${cultureTags(qlooSignals.shared_affinities, 'No shared named affinities appeared in the returned top results.')}</strong></div><div><span>Distinctive acquirer affinities</span><strong>${cultureTags(qlooSignals.acquirer_distinctive, 'No distinctive acquirer signals were available.')}</strong></div><div><span>Distinctive target affinities</span><strong>${cultureTags(qlooSignals.target_distinctive, 'No distinctive target signals were available.')}</strong></div></div><h3>Related audience signals</h3>${cultureList(list(qlooSignals.comparison?.results).map(x=>({title:x.name || 'Related entity', detail:x.type || 'Cultural signal', affinity:x.affinity})), 'No cross-company recommendations were returned in this run.')}${cultureList(list(cul.source_evidence || cul.evidence), 'Public-source cultural evidence was not returned.')}</div>
         <div class="culture-tab-panel" role="tabpanel" data-culture-panel="implications" hidden><h3>Commercial and integration implications</h3>${cultureList(cul.audience_signals || cul.audience_overlap || cul.consumer_culture, 'No public-source audience observations were returned.')}${cultureList(cul.brand_positioning, 'Brand-positioning evidence was not returned.')}${cultureList(cul.audience_expansion_opportunities, 'No supported audience expansion opportunities were identified.')}${cultureList(cul.cultural_integration_risks, 'No specific cultural integration risks were returned.')}${cultureList(cul.practical_implications, 'Validate how shared and distinctive audience signals translate into brand and customer decisions.')}</div>
         <p class="cultural-note">${esc(String(qlooSignals.methodology || 'Affinity results are directional taste signals. They should not be interpreted as guaranteed customer overlap, cultural compatibility, or financial performance.').replace(/\bqloo\b/gi, 'cultural data source'))}</p></div></section>
       <section id="risks" class="content-grid"><div class="panel span-2"><div class="panel-head"><h2>Risks &amp; synergies</h2></div>${risks.length?risks.map(finding).join(''):'<p class="muted">No material risks or opportunities have been verified yet.</p>'}</div></section>

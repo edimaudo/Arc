@@ -207,6 +207,15 @@ def test_company_dropdowns_only_use_companies_from_saved_search_results():
     assert "custom-company" not in discovery
     assert "Enter another company" not in discovery
     assert "item.insights?.company" not in discovery
+    # Result-only competitors and suggested peers must not leak into either company picker.
+    assert "for (const competitor of array(item.insights?.competitive_landscape)) addCompany" not in discovery
+    assert "for (const peer of array(item.comparables)) addCompany" not in discovery
+    assert "for (const competitor of array(item.insights?.competitive_landscape)) addCompany" not in owner
+    assert "for (const peer of array(item.comparables)) addCompany" not in owner
+    assert "addCompany(c.company,context)" in discovery
+    assert "addCompany(c.reference_company,context)" in discovery
+    assert "addCompany(c.company, context)" in owner
+    assert "addCompany(c.reference_company, context)" in owner
 
 
 def test_acquisition_cultural_tabs_hide_nonselected_panels_and_track_section_scroll():
@@ -221,3 +230,6 @@ def test_acquisition_cultural_tabs_hide_nonselected_panels_and_track_section_scr
     assert "new IntersectionObserver" in analysis
     assert ".analysis-tabs a.active" in css
     assert "Math.round(n >= 0 && n <= 1 ? n * 100 : n)}%`" in analysis
+    assert "text.match(/^(-?\\d+(?:\\.\\d+)?)\\s*\\/\\s*100(?:\\s+affinity)?$/i)" in analysis
+    assert "const scoreNumber = value =>" in analysis
+    assert "`${Math.round(score)}%`" in analysis

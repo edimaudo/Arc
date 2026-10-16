@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+import hashlib
 import json
 import re
+import time
 from datetime import date, timedelta
 from typing import Any, Awaitable, Callable
 
@@ -27,6 +30,12 @@ class ArcAgent:
         self.model = GEMINI_MODEL
         self.qloo = QlooClient()
         self._company_research_cache: dict[str, dict[str, Any]] = {}
+        # Process-local cache is useful on warm Vercel instances. Keys include both
+        # company names, scope, objective, and uploaded document content so different
+        # inputs never share a report accidentally.
+        self._acquisition_result_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._acquisition_cache_locks: dict[str, asyncio.Lock] = {}
+        self._acquisition_cache_ttl_seconds = 15 * 60
         self._handlers: dict[str, ToolHandler] = {
             "qloo_lookup_entities": self.qloo_lookup_entities,
             "qloo_cultural_insights": self.qloo_cultural_insights,
@@ -116,14 +125,89 @@ class ArcAgent:
             },
         ]
 
+    @staticmethod
+    def _acquisition_cache_key(goal: dict[str, Any], max_turns: int) -> str:
+        documents = []
+        for item in goal.get("documents", []) or []:
+            if not isinstance(item, dict):
+                continue
+            documents.append({
+                "filename": str(item.get("filename") or "Uploaded document").strip(),
+                "metrics": item.get("metrics") if isinstance(item.get("metrics"), dict) else {},
+                "text": str(item.get("text") or "")[:6000],
+            })
+        payload = {
+            "acquirer": str(goal.get("acquirer") or "").strip().casefold(),
+            "target": str(goal.get("target") or "").strip().casefold(),
+            "objective": str(goal.get("objective") or "Full acquisition investigation").strip().casefold(),
+            "scopes": sorted(str(x).casefold() for x in (goal.get("scopes") or ["financial", "business", "cultural", "integration"])),
+            "geography": str(goal.get("geography") or "").strip().casefold(),
+            "documents": documents,
+            "max_turns": max_turns,
+        }
+        serial = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+        return hashlib.sha256(serial.encode("utf-8")).hexdigest()
+
+    def _get_acquisition_cache(self, key: str) -> dict[str, Any] | None:
+        entry = self._acquisition_result_cache.get(key)
+        if not entry:
+            return None
+        expires_at, result = entry
+        if expires_at <= time.monotonic():
+            self._acquisition_result_cache.pop(key, None)
+            return None
+        return copy.deepcopy(result)
+
+    def _save_acquisition_cache(self, key: str, result: dict[str, Any]) -> None:
+        now = time.monotonic()
+        for old_key, (expires_at, _) in list(self._acquisition_result_cache.items()):
+            if expires_at <= now:
+                self._acquisition_result_cache.pop(old_key, None)
+        # Bound memory for warm workers that process many unique company pairs.
+        if len(self._acquisition_result_cache) >= 64:
+            oldest = min(self._acquisition_result_cache, key=lambda item: self._acquisition_result_cache[item][0])
+            self._acquisition_result_cache.pop(oldest, None)
+        self._acquisition_result_cache[key] = (now + self._acquisition_cache_ttl_seconds, copy.deepcopy(result))
+
     async def run(self, goal: dict[str, Any], max_turns: int = 12) -> dict[str, Any]:
+        """Return a cached first-pass result when the exact research inputs recur.
+
+        The cache is process-local and time-limited; the browser remains the durable
+        store. A per-key async lock coalesces simultaneous requests for the same pair.
+        Incomplete/live-provider-outage reports are not cached, so Retry can recover.
+        """
+        key = self._acquisition_cache_key(goal, max_turns)
+        cached = self._get_acquisition_cache(key)
+        if cached is not None:
+            cached["research_cache"] = {"hit": True, "ttl_seconds": self._acquisition_cache_ttl_seconds}
+            return cached
+        lock = self._acquisition_cache_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._acquisition_cache_locks[key] = lock
+        try:
+            async with lock:
+                cached = self._get_acquisition_cache(key)
+                if cached is not None:
+                    cached["research_cache"] = {"hit": True, "ttl_seconds": self._acquisition_cache_ttl_seconds}
+                    return cached
+                result = await self._run_uncached(goal, max_turns=max_turns)
+                qloo_status = ((result.get("cultural") or {}).get("qloo_signals") or {}).get("status") if isinstance(result, dict) else None
+                scopes = {str(scope).casefold() for scope in (goal.get("scopes") or ["financial", "business", "cultural", "integration"])}
+                cultural_cache_ok = "cultural" not in scopes or qloo_status in {"available", "partial"}
+                if isinstance(result, dict) and not result.get("limited_mode") and cultural_cache_ok and (result.get("report") or result.get("findings")):
+                    self._save_acquisition_cache(key, result)
+                return copy.deepcopy(result)
+        finally:
+            if self._acquisition_cache_locks.get(key) is lock and not lock.locked():
+                self._acquisition_cache_locks.pop(key, None)
+
+    async def _run_uncached(self, goal: dict[str, Any], max_turns: int = 12) -> dict[str, Any]:
         """Produce the first-pass acquisition report in one grounded Gemini request.
 
-        Public-source synthesis and the bounded Qloo preflight run concurrently. This
-        replaces the previous multi-turn tool-planning loop for the initial report,
-        which could require many sequential model round trips before showing results.
+        Public-source synthesis and bounded cultural preflight run concurrently.
         """
-        # Let the public-source request fail inside gather so Qloo can still return
+        # Let the public-source request fail inside gather so cultural evidence can
         # cultural evidence when Gemini credentials or availability are a problem.
         documents = []
         for item in goal.get("documents", []) or []:
@@ -152,7 +236,7 @@ class ArcAgent:
             "diligence_questions must be a list of practical questions. scores may contain strategic_fit, cultural_fit, audience_expansion, financial_fit and integration_risk, "
             "but use null or 'Not assessed' wherever public evidence is insufficient. financial must contain revenue_growth, ebitda_margin, net_debt_to_ebitda, customer_concentration and assessment, "
             "using only sourced or uploaded values. business must contain model, market, strategic_rationale and open_questions. cultural must be a substantive section, not a placeholder, containing profile_summary, acquirer_profile, target_profile, audience_signals, brand_positioning, shared_cultural_territory, differentiated_cultural_territory, audience_expansion_opportunities, cultural_integration_risks, practical_implications and source_evidence. Each signal should explain what was observed, why it matters commercially, and the evidence limitation. "
-            "but do not attribute anything to Qloo; the application will attach Qloo entity evidence separately. report must contain executive_summary, deal_fit, key_risks, "
+            "but do not attribute anything to a named provider; the application will attach matched cultural evidence separately. report must contain executive_summary, cultural_takeaway, deal_fit, key_risks, "
             "growth_opportunities, next_steps, sources and disclaimer. Make findings specific to these companies rather than generic diligence advice.\n\n"
             "ASSIGNMENT:\n" + json.dumps(brief, ensure_ascii=False)
         )
@@ -278,24 +362,22 @@ class ArcAgent:
             "financial": {"assessment": "Not assessed: live public-source research is unavailable."},
             "business": {"model": "Not verified", "market": "Not verified", "strategic_rationale": "Not assessed", "open_questions": questions},
             "cultural": cultural, "qloo_evidence": {"preflight": seed},
-            "report": {"executive_summary": summary, "deal_fit": {}, "key_risks": risks, "growth_opportunities": [], "next_steps": questions, "disclaimer": "Limited mode: only available Qloo culture signals are reported. Validate all material business and financial claims with independent sources.", "service_notice": notice},
+            "report": {"executive_summary": summary, "cultural_takeaway": cultural["profile_summary"], "deal_fit": {}, "key_risks": risks, "growth_opportunities": [], "next_steps": questions, "disclaimer": "Limited mode: only available cultural signals are reported. Validate all material business and financial claims with independent sources.", "service_notice": notice},
         }
 
     async def _resolve_company_entities(self, query: str) -> list[dict[str, Any]]:
-        """Prefer Qloo brand entities for companies, then fall back to broader entity search."""
+        """Resolve once, preferring brand matches in the returned entity list."""
         query = str(query or "").strip()
         if not query:
             return []
         try:
-            brand_lookup = await asyncio.wait_for(self.qloo_lookup_entities({"queries": [query], "types": ["urn:entity:brand"]}), timeout=2.4)
-            branded = brand_lookup.get("entities", [])
-            if branded:
-                return branded[:3]
-        except Exception:
-            pass
-        try:
-            fallback = await asyncio.wait_for(self.qloo_lookup_entities({"queries": [query]}), timeout=2.4)
-            return fallback.get("entities", [])[:3]
+            lookup = await asyncio.wait_for(self.qloo_lookup_entities({"queries": [query]}), timeout=2.4)
+            entities = lookup.get("entities", [])
+            is_brand = lambda item: str(item.get("type") or "").casefold().endswith(":brand")
+            branded = [item for item in entities if is_brand(item)]
+            # A single query avoids a second sequential round trip while retaining
+            # the preference for company/brand matches when Qloo provides them.
+            return (branded or entities)[:3]
         except Exception:
             return []
 

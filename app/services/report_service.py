@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import re
 from typing import Any
 
 from reportlab.lib.pagesizes import letter
@@ -21,9 +22,23 @@ def build_report_pdf(analysis: dict[str, Any]) -> bytes:
     story: list[Any] = []
     acq, tgt = analysis.get('acquirer', ''), analysis.get('target', '')
     story.append(Paragraph('ARC', styles['ArcSmall']))
-    story.append(Paragraph('Acquisition Analysis Report', styles['ArcTitle']))
+    story.append(Paragraph('Acquisition Takeaway', styles['ArcTitle']))
     story.append(Paragraph(f'{_esc(acq)}  x  {_esc(tgt)}', styles['ArcH2']))
-    story.append(Paragraph(_esc((analysis.get('report') or {}).get('executive_summary') or analysis.get('agent_output') or 'No executive summary was returned.'), styles['ArcBody']))
+    report = analysis.get('report') or {}
+    story.append(Paragraph(_esc(report.get('executive_summary') or analysis.get('agent_output') or 'No executive summary was returned.'), styles['ArcBody']))
+    cultural = analysis.get('cultural') or {}
+    takeaway_culture = report.get('cultural_takeaway') or report.get('cultural_implications') or cultural.get('profile_summary') or 'No company-specific cultural conclusion was verified in this run.'
+    story.append(Paragraph('Cultural implications', styles['ArcH2']))
+    story.append(Paragraph(_esc(takeaway_culture), styles['ArcBody']))
+    qloo_signals = cultural.get('qloo_signals') if isinstance(cultural.get('qloo_signals'), dict) else {}
+    shared_affinities = qloo_signals.get('shared_affinities') or cultural.get('shared_cultural_territory') or cultural.get('shared') or []
+    for item in list(shared_affinities)[:5] if isinstance(shared_affinities, list) else [shared_affinities]:
+        if isinstance(item, dict):
+            label = item.get('name') or item.get('title') or 'Cultural signal'
+            detail = item.get('detail') or item.get('category') or item.get('body') or 'Directional audience affinity; validate before inferring customer overlap.'
+            story.append(Paragraph(f'<b>{_esc(label)}</b>: {_esc(detail)}', styles['ArcBody']))
+        elif item:
+            story.append(Paragraph(_esc(item), styles['ArcBody']))
     story.append(Spacer(1, 8))
 
     scores = analysis.get('overview', {})
@@ -75,7 +90,9 @@ def build_report_pdf(analysis: dict[str, Any]) -> bytes:
 
 
 def _esc(value: Any) -> str:
-    text = str(value if value is not None else '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    text = str(value if value is not None else '')
+    text = re.sub(r'\bqloo\b', 'cultural data source', text, flags=re.IGNORECASE)
+    text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
     return text.replace('\n', '<br/>')
 
 

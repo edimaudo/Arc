@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+import hashlib
+import json
+import time
 from typing import Any
 
 import httpx
@@ -22,6 +26,22 @@ class QlooClient:
         self.base_url = QLOO_BASE_URL
         self.api_key = QLOO_API_KEY
         self.timeout = QLOO_TIMEOUT_SECONDS
+        self._response_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._response_cache_ttl = {
+            '/search': 30 * 60,
+            '/v2/insights': 15 * 60,
+            '/v2/analysis/compare': 15 * 60,
+            '/v2/trending': 5 * 60,
+        }
+
+    @staticmethod
+    def _cache_key(path: str, params: list[tuple[str, Any]] | dict[str, Any]) -> str:
+        if isinstance(params, dict):
+            params_value: Any = sorted(params.items(), key=lambda item: str(item[0]))
+        else:
+            params_value = list(params)
+        serial = json.dumps({'path': path, 'params': params_value}, sort_keys=True, ensure_ascii=False, default=str, separators=(',', ':'))
+        return hashlib.sha256(serial.encode('utf-8')).hexdigest()
 
     def _headers(self) -> dict[str, str]:
         if not self.api_key:
@@ -29,6 +49,14 @@ class QlooClient:
         return {'X-Api-Key': self.api_key, 'Accept': 'application/json'}
 
     async def _get(self, path: str, params: list[tuple[str, Any]] | dict[str, Any], retries: int = 2) -> dict[str, Any]:
+        cache_key = self._cache_key(path, params)
+        cached = self._response_cache.get(cache_key)
+        now = time.monotonic()
+        if cached:
+            expires_at, body = cached
+            if expires_at > now:
+                return copy.deepcopy(body)
+            self._response_cache.pop(cache_key, None)
         last_error: Exception | None = None
         for attempt in range(retries + 1):
             try:
@@ -48,9 +76,20 @@ class QlooClient:
                         body=response.text[:1200],
                     )
                 try:
-                    return response.json()
+                    body = response.json()
                 except ValueError as exc:
                     raise QlooAPIError('Qloo returned a non-JSON response.', status_code=response.status_code, body=response.text[:1200]) from exc
+                ttl = self._response_cache_ttl.get(path, 0)
+                if ttl:
+                    now = time.monotonic()
+                    for old_key, (expires_at, _) in list(self._response_cache.items()):
+                        if expires_at <= now:
+                            self._response_cache.pop(old_key, None)
+                    if len(self._response_cache) >= 256:
+                        oldest = min(self._response_cache, key=lambda item: self._response_cache[item][0])
+                        self._response_cache.pop(oldest, None)
+                    self._response_cache[cache_key] = (now + ttl, copy.deepcopy(body))
+                return body
             except httpx.TimeoutException as exc:
                 last_error = exc
                 if attempt < retries:

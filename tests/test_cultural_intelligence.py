@@ -2,11 +2,13 @@
 import asyncio
 import os
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("GEMINI_API_KEY", "test-key")
 os.environ.setdefault("QLOO_API_KEY", "test-key")
 
 from app.services.agent_service import ArcAgent
+from app.qloo.client import QlooClient
 
 
 class FakeQloo:
@@ -224,3 +226,68 @@ def test_business_insights_prompt_always_covers_all_focus_areas():
     assert "FOCUS:" not in prompt
     for required in ["business_overview", "current_trends", "competitive_landscape", "customer_and_product_signals", "growth_opportunities", "business_risks", "recommended_actions", "key_metrics_to_watch", "cultural_context"]:
         assert required in prompt
+
+
+def test_acquisition_results_are_cached_for_identical_inputs_but_documents_change_key():
+    agent = ArcAgent()
+    agent.qloo = FakeQloo()
+    calls = {"gemini": 0, "qloo_seed": 0}
+
+    async def grounded(prompt):
+        calls["gemini"] += 1
+        return {"data": {
+            "summary": "Cached acquisition summary.",
+            "findings": [{"type": "Finding", "title": "Market context", "body": "Evidence-backed result."}],
+            "risks": [], "opportunities": [], "diligence_questions": [],
+            "scores": {"strategic_fit": 81}, "financial": {}, "business": {}, "cultural": {},
+            "qloo_evidence": {}, "report": {"executive_summary": "Cached acquisition summary.", "cultural_takeaway": "Maintain distinctive brand meaning."},
+        }, "steps": []}
+
+    original_seed = agent._seed_qloo_context
+    async def counted_seed(goal):
+        calls["qloo_seed"] += 1
+        return await original_seed(goal)
+
+    agent._web_search_json = grounded
+    agent._seed_qloo_context = counted_seed
+    goal = {"acquirer": "Northstar Foods", "target": "Maple Market", "scopes": ["financial", "business", "cultural"], "documents": []}
+    first = asyncio.run(agent.run(goal))
+    second = asyncio.run(agent.run(goal))
+    assert calls == {"gemini": 1, "qloo_seed": 1}
+    assert second["research_cache"]["hit"] is True
+    assert first["report"]["executive_summary"] == second["report"]["executive_summary"]
+
+    changed = {**goal, "documents": [{"filename": "metrics.csv", "text": "EBITDA margin 20%", "metrics": {"ebitda_margin": 0.2}}]}
+    asyncio.run(agent.run(changed))
+    assert calls["gemini"] == 2
+
+
+def test_qloo_http_responses_are_cached_for_identical_endpoint_parameters():
+    calls = {"get": 0}
+
+    class FakeResponse:
+        status_code = 200
+        headers = {}
+        text = ""
+        def json(self):
+            return {"entities": [{"entity_id": "brand:example", "name": "Example Brand"}]}
+
+    class FakeAsyncClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+        async def get(self, *args, **kwargs):
+            calls["get"] += 1
+            return FakeResponse()
+
+    with patch("app.qloo.client.httpx.AsyncClient", FakeAsyncClient):
+        client = QlooClient()
+        first = asyncio.run(client.search("Example Brand"))
+        second = asyncio.run(client.search("Example Brand"))
+    assert calls["get"] == 1
+    assert first == second
+    first["entities"].clear()
+    assert len(second["entities"]) == 1

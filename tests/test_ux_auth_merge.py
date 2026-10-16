@@ -230,6 +230,44 @@ def test_acquisition_cultural_tabs_hide_nonselected_panels_and_track_section_scr
     assert "new IntersectionObserver" in analysis
     assert ".analysis-tabs a.active" in css
     assert "Math.round(n >= 0 && n <= 1 ? n * 100 : n)}%`" in analysis
-    assert "text.match(/^(-?\\d+(?:\\.\\d+)?)\\s*\\/\\s*100(?:\\s+affinity)?$/i)" in analysis
+    assert "const ratio = text.match(/(-?\\d+(?:\\.\\d+)?)\\s*\\/\\s*100(?:\\s+affinity)?/i)" in analysis
     assert "const scoreNumber = value =>" in analysis
-    assert "`${Math.round(score)}%`" in analysis
+    assert "`${Math.round(Math.max(0, Math.min(100, score)))}%`" in analysis
+
+
+def test_acquisition_score_cards_are_compact_and_takeaway_includes_cultural_context():
+    root = Path(__file__).parents[1] / 'app'
+    analysis = (root / 'templates' / 'analysis.html').read_text(encoding='utf-8')
+    css = (root / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
+    agent = (root / 'services' / 'agent_service.py').read_text(encoding='utf-8')
+    report_service = (root / 'services' / 'report_service.py').read_text(encoding='utf-8')
+    assert "metric('Strategic fit',ov.strategic_fit,'Product, market and capability fit')" in analysis
+    assert "metric('Audience expansion',ov.audience_expansion,'Potential to reach adjacent audiences')" in analysis
+    assert "metric('Financial fit',ov.financial_fit,'Based on available financial evidence')" in analysis
+    assert 'metric-card-summary .metric-value' in css
+    assert 'metric-card-summary .metric-detail' in css
+    assert 'href="#report">Acquisition Insight</a>' in analysis
+    assert '<h2>Acquisition Takeaway</h2>' in analysis
+    assert '<h3>Cultural implications</h3>' in analysis
+    assert 'cultural_takeaway' in agent
+    assert 'Acquisition Takeaway' in report_service
+
+
+def test_acquisition_report_tab_active_state_updates_on_click_scroll_and_document_bottom():
+    analysis = (Path(__file__).parents[1] / 'app' / 'templates' / 'analysis.html').read_text(encoding='utf-8')
+    assert "activate(link.getAttribute('href').slice(1))" in analysis
+    assert "window.addEventListener('scroll', scheduleUpdate, {passive: true})" in analysis
+    assert 'const documentBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 6' in analysis
+    assert 'activate(sections[sections.length - 1].id)' in analysis
+    assert "observer.disconnect()" in analysis
+
+
+def test_analysis_cache_and_browser_reuse_have_freshness_limits():
+    agent = (Path(__file__).parents[1] / 'app' / 'services' / 'agent_service.py').read_text(encoding='utf-8')
+    new_analysis = (Path(__file__).parents[1] / 'app' / 'templates' / 'new_analysis.html').read_text(encoding='utf-8')
+    qloo = (Path(__file__).parents[1] / 'app' / 'qloo' / 'client.py').read_text(encoding='utf-8')
+    assert '_acquisition_cache_ttl_seconds = 15 * 60' in agent
+    assert 'self._save_acquisition_cache(key, result)' in agent
+    assert '15 * 60' in qloo
+    assert '15 * 60 * 1000' in new_analysis
+    assert 'canonical(item) === canonical(incoming)' in new_analysis

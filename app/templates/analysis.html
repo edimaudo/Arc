@@ -31,20 +31,39 @@
   const items = (values, empty) => list(values).length ? `<ul class="evidence-list">${values.map(v => `<li>${esc(labelText(v))}</li>`).join('')}</ul>` : `<p class="muted">${esc(empty)}</p>`;
   const scoreNumber = value => {
     if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'number') return value >= 0 && value <= 1 ? value * 100 : value;
     const text = String(value).trim();
-    const ratio = text.match(/^(-?\d+(?:\.\d+)?)\s*\/\s*100(?:\s+affinity)?$/i);
+    const percentage = text.match(/(-?\d+(?:\.\d+)?)\s*%/);
+    if (percentage) return Number(percentage[1]);
+    const ratio = text.match(/(-?\d+(?:\.\d+)?)\s*\/\s*100(?:\s+affinity)?/i);
     if (ratio) return Number(ratio[1]);
-    const n = Number(text);
-    if (!Number.isFinite(n)) return null;
-    return n >= 0 && n <= 1 ? n * 100 : n;
+    const standalone = text.match(/^(-?\d+(?:\.\d+)?)$/);
+    if (standalone) {
+      const n = Number(standalone[1]);
+      return n >= 0 && n <= 1 ? n * 100 : n;
+    }
+    return null;
   };
-  const metric = (label, value) => {
+  const compactRisk = value => {
+    if (value === null || value === undefined || value === '') return 'Not assessed';
+    const text = String(value);
+    for (const level of ['Critical', 'High', 'Moderate', 'Medium', 'Low']) {
+      if (new RegExp(`\\b${level}\\b`, 'i').test(text)) return level;
+    }
+    if (/not assessed|pending|unknown|insufficient evidence|unavailable/i.test(text)) return 'Not assessed';
+    return text.length <= 16 ? text : 'Review needed';
+  };
+  const metric = (label, value, detail) => {
     const scoreLabel = ['Strategic fit', 'Audience expansion', 'Financial fit'].includes(label);
     const score = scoreLabel ? scoreNumber(value) : null;
-    const numeric = scoreLabel ? score !== null : Number.isFinite(Number(value)) && value !== null && value !== '';
-    const display = scoreLabel && score !== null ? `${Math.round(score)}%` : (value === null || value === undefined || value === '' ? '—' : value);
-    const barValue = scoreLabel ? score : (numeric ? Number(value) : null);
-    return `<div class="metric-card"><span>${esc(label)}</span><strong>${esc(display)}</strong>${numeric ? `<div class="bar"><i style="width:${Math.max(0, Math.min(100, barValue))}%"></i></div>` : ''}</div>`;
+    let display;
+    if (scoreLabel) display = score === null ? 'Not assessed' : `${Math.round(Math.max(0, Math.min(100, score)))}%`;
+    else if (label === 'Integration risk') display = compactRisk(value);
+    else display = value === null || value === undefined || value === '' ? 'Not available' : String(value);
+    const numeric = scoreLabel && score !== null;
+    const barValue = numeric ? Math.max(0, Math.min(100, score)) : 0;
+    const valueClass = numeric ? 'metric-value score-value' : 'metric-value text-value';
+    return `<article class="metric-card metric-card-summary"><span class="metric-label">${esc(label)}</span><strong class="${valueClass}">${esc(display)}</strong>${numeric ? `<div class="bar" aria-hidden="true"><i style="width:${barValue}%"></i></div>` : ''}<p class="metric-detail">${esc(detail || '')}</p></article>`;
   };
   const displayDetail = item => typeof item === 'string' ? item : (item?.detail || item?.body || item?.summary || item?.reason || item?.implication || item?.description || item?.action || '');
   const cultureList = (values, empty) => {
@@ -87,12 +106,20 @@
     const qlooSignals = cul.qloo_signals || {};
     const findings = list(a.findings), ops = list(a.opportunities), questions = list(a.diligence_questions), docs = list(a.documents);
     const reportSummary = (a.report && (a.report.executive_summary || a.report.summary)) || a.agent_output || 'Research is underway. Findings will appear here when available.';
+    const culturalTakeawaySummary = a.report?.cultural_takeaway || a.report?.cultural_implications || cul.profile_summary || 'Cultural evidence should inform brand positioning, audience opportunity and integration planning. No company-specific cultural conclusion should be drawn where evidence is missing.';
+    const asArray = value => Array.isArray(value) ? value : (value ? [value] : []);
+    const culturalTakeawayItems = [
+      ...list(qlooSignals.shared_affinities).slice(0, 4).map(item => ({title: item.name || 'Common cultural affinity', detail: `Appears in ${item.category || 'a cultural category'} for both company profiles. Treat as a directional audience hypothesis, not proof of customer overlap.`})),
+      ...asArray(cul.audience_expansion_opportunities),
+      ...asArray(cul.cultural_integration_risks),
+      ...asArray(cul.practical_implications),
+    ].slice(0, 6);
     const notices = [...list(a.upload_errors), ...(a.service_notice ? [a.service_notice] : [])].map(x => String(x).replace(/\bqloo\b/gi, 'cultural data source'));
     if (notices.length) { alertBox.textContent = notices.join(' '); alertBox.hidden = false; }
     else { alertBox.hidden = true; }
     root.innerHTML = `
-      <section class="tabs analysis-tabs" aria-label="Analysis sections"><a class="active" href="#overview">Overview</a><a href="#financial">Financial Intelligence</a><a href="#business">Business Intelligence</a><a href="#cultural">Cultural Intelligence</a><a href="#risks">Risks &amp; synergies</a><a href="#report">Report</a></section>
-      <section id="overview" class="metric-grid">${metric('Strategic fit',ov.strategic_fit)}${metric('Cultural categories', (() => { const categories = [...list(qlooSignals.acquirer_profile?.categories), ...list(qlooSignals.target_profile?.categories)]; const names = [...new Set(categories.map(x => x.label || x.entity_type).filter(Boolean))]; return names.length ? `${names.length} reviewed` : 'Not available'; })())}${metric('Audience expansion',ov.audience_expansion)}${metric('Financial fit',ov.financial_fit)}<div class="metric-card text-metric"><span>Integration risk</span><strong>${esc(ov.integration_risk ?? 'Pending')}</strong></div></section>
+      <section class="tabs analysis-tabs" aria-label="Analysis sections"><a class="active" href="#overview">Overview</a><a href="#financial">Financial Intelligence</a><a href="#business">Business Intelligence</a><a href="#cultural">Cultural Intelligence</a><a href="#risks">Risks &amp; synergies</a><a href="#report">Acquisition Insight</a></section>
+      <section id="overview" class="metric-grid">${metric('Strategic fit',ov.strategic_fit,'Product, market and capability fit')}${metric('Cultural categories', (() => { const categories = [...list(qlooSignals.acquirer_profile?.categories), ...list(qlooSignals.target_profile?.categories)]; const names = [...new Set(categories.filter(x => list(x.results).length).map(x => x.label || x.entity_type).filter(Boolean))]; return names.length ? `${names.length} categories` : 'Not available'; })(),'Brands, music, places, film and TV')}${metric('Audience expansion',ov.audience_expansion,'Potential to reach adjacent audiences')}${metric('Financial fit',ov.financial_fit,'Based on available financial evidence')}${metric('Integration risk',ov.integration_risk,'People, brands, systems and operations')}</section>
       <section class="content-grid"><div class="panel span-2"><div class="panel-head"><h2>Executive findings</h2></div>${findings.length ? findings.map(finding).join('') : '<p class="muted">No supported findings were returned yet. Arc researches both companies from public sources whether or not documents are uploaded.</p>'}</div>
       <div class="panel"><div class="panel-head"><h2>Deal materials</h2><span class="muted">${docs.length} files</span></div>${items(docs.map(d=>d.filename),'No materials uploaded.')}<div class="panel-head" style="margin-top:24px"><h2>Methodology</h2></div><p class="muted">Arc combines financial evidence, business research, cultural analysis, deterministic scoring, and AI-assisted synthesis. Findings remain tied to available evidence, with unresolved questions surfaced for human diligence.</p></div></section>
       <section id="financial" class="content-grid"><div class="panel span-2"><div class="panel-head"><h2>Financial Intelligence</h2></div>${Object.keys(fin).length ? `<div class="score-row">${[['Revenue growth','revenue_growth'],['EBITDA margin','ebitda_margin'],['Net debt / EBITDA','net_debt_to_ebitda'],['Customer concentration','customer_concentration']].map(([l,k])=>`<div><span>${l}</span><strong>${esc(fin[k] ?? '—')}</strong></div>`).join('')}</div><p class="muted">${esc(fin.assessment || '')}</p>` : '<p class="muted">Financial evidence has not been analyzed yet.</p>'}</div></section>
@@ -111,7 +138,7 @@
         <p class="cultural-note">${esc(String(qlooSignals.methodology || 'Affinity results are directional taste signals. They should not be interpreted as guaranteed customer overlap, cultural compatibility, or financial performance.').replace(/\bqloo\b/gi, 'cultural data source'))}</p></div></section>
       <section id="risks" class="content-grid"><div class="panel span-2"><div class="panel-head"><h2>Risks &amp; synergies</h2></div>${risks.length?risks.map(finding).join(''):'<p class="muted">No material risks or opportunities have been verified yet.</p>'}</div></section>
       <section class="content-grid"><div class="panel"><div class="panel-head"><h2>Growth opportunities</h2></div>${ops.length?ops.slice(0,8).map((item,i)=>`<article class="finding"><h3>${esc(item?.title || labelText(item))}</h3>${item && typeof item==='object'?`<p>${esc(item.body || item.rationale || '')}</p>`:''}</article>`).join(''):'<p class="muted">No supported growth opportunities yet.</p>'}</div><div class="panel"><div class="panel-head"><h2>Open diligence questions</h2></div>${items(questions.slice(0,10).map(q=>q?.question || q),'No open diligence questions returned.')}</div></section>
-      <section id="report" class="content-grid"><div class="panel span-2"><div class="panel-head"><h2>Acquisition Analysis Report</h2></div><p class="muted">${esc(reportSummary)}</p><p class="disclaimer">${esc(a.report?.disclaimer || 'AI-generated decision support; validate material findings through conventional diligence.')}</p></div></section>
+      <section id="report" class="content-grid"><div class="panel span-2"><div class="panel-head"><h2>Acquisition Takeaway</h2></div><p class="muted">${esc(reportSummary)}</p><section class="takeaway-cultural"><h3>Cultural implications</h3><p>${esc(culturalTakeawaySummary)}</p>${cultureList(culturalTakeawayItems, 'No supported company-specific cultural implications were available in this run.')}</section><p class="disclaimer">${esc(a.report?.disclaimer || 'AI-generated decision support; validate material findings through conventional diligence.')}</p></div></section>
 `;
     root.querySelectorAll('[data-culture-tab]').forEach(tab => tab.addEventListener('click', () => {
       const key = tab.dataset.cultureTab;
@@ -124,7 +151,9 @@
     }));
     initAnalysisNavigation();
   };
+  let cleanupAnalysisNavigation = null;
   function initAnalysisNavigation() {
+    if (cleanupAnalysisNavigation) cleanupAnalysisNavigation();
     const nav = root.querySelector('.analysis-tabs');
     if (!nav) return;
     const links = [...nav.querySelectorAll('a')];
@@ -134,23 +163,41 @@
       link.classList.toggle('active', active);
       if (active) link.setAttribute('aria-current', 'location'); else link.removeAttribute('aria-current');
     });
-    links.forEach(link => link.addEventListener('click', () => activate(link.getAttribute('href').slice(1))));
+    const update = () => {
+      if (!sections.length) return;
+      const documentBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 6;
+      if (documentBottom) {
+        activate(sections[sections.length - 1].id);
+        return;
+      }
+      const line = nav.getBoundingClientRect().bottom + 22;
+      const passed = sections.filter(section => section.getBoundingClientRect().top <= line);
+      activate((passed.length ? passed[passed.length - 1] : sections[0]).id);
+    };
+    let frame = 0;
+    const scheduleUpdate = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => { frame = 0; update(); });
+    };
+    links.forEach(link => link.addEventListener('click', () => {
+      activate(link.getAttribute('href').slice(1));
+      window.requestAnimationFrame(scheduleUpdate);
+    }));
+    let observer = null;
     if ('IntersectionObserver' in window) {
-      const observer = new IntersectionObserver(entries => {
-        const current = entries.filter(entry => entry.isIntersecting).sort((a,b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-        if (current) activate(current.target.id);
-      }, {rootMargin: '-150px 0px -65% 0px', threshold: [0, 0.1, 0.25]});
+      observer = new IntersectionObserver(() => scheduleUpdate(), {rootMargin: '-140px 0px -55% 0px', threshold: [0, 0.1, 0.25]});
       sections.forEach(section => observer.observe(section));
-    } else {
-      const update = () => {
-        const threshold = (nav.getBoundingClientRect().bottom || 120) + 18;
-        const current = sections.filter(section => section.getBoundingClientRect().top <= threshold).slice(-1)[0] || sections[0];
-        if (current) activate(current.id);
-      };
-      window.addEventListener('scroll', update, {passive:true});
-      window.addEventListener('resize', update);
-      update();
     }
+    window.addEventListener('scroll', scheduleUpdate, {passive: true});
+    window.addEventListener('resize', scheduleUpdate);
+    cleanupAnalysisNavigation = () => {
+      window.removeEventListener('scroll', scheduleUpdate);
+      window.removeEventListener('resize', scheduleUpdate);
+      if (observer) observer.disconnect();
+      if (frame) window.cancelAnimationFrame(frame);
+      cleanupAnalysisNavigation = null;
+    };
+    update();
   }
   const showError = message => { alertBox.textContent = message; alertBox.hidden = false; };
 

@@ -23,8 +23,42 @@ form?.addEventListener('submit', async event => {
     const response = await fetch('/analysis/start', {method: 'POST', body: new FormData(form)});
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || 'Arc could not prepare this analysis.');
-    await ArcStore.putAnalysis(data.analysis);
-    window.location.assign('/analysis/' + encodeURIComponent(data.analysis.analysis_id));
+    const incoming = data.analysis;
+    button.textContent = 'Checking recent results…';
+    const canonical = analysis => JSON.stringify({
+      acquirer: String(analysis.acquirer || '').trim().toLocaleLowerCase(),
+      target: String(analysis.target || '').trim().toLocaleLowerCase(),
+      objective: String(analysis.objective || '').trim().toLocaleLowerCase(),
+      scopes: (Array.isArray(analysis.scopes) ? analysis.scopes : []).map(value => String(value).toLowerCase()).sort(),
+      documents: (Array.isArray(analysis.documents) ? analysis.documents : []).map(doc => ({
+        filename: String(doc.filename || '').trim().toLowerCase(),
+        type: String(doc.type || '').trim().toLowerCase(),
+        metrics: doc.metrics || {},
+        text: String(doc.text || '')
+      })).sort((a, b) => a.filename.localeCompare(b.filename))
+    });
+    const now = Date.now();
+    let cached = null;
+    try {
+      const existing = await ArcStore.allAnalyses();
+      cached = existing.find(item => item.analysis_id !== incoming.analysis_id
+        && item.status === 'Investigation complete'
+        && !item.limited_mode
+        && item.completed_at
+        && now - Date.parse(item.completed_at) >= 0
+        && now - Date.parse(item.completed_at) <= 15 * 60 * 1000
+        && canonical(item) === canonical(incoming));
+    } catch (_) { /* If browser history cannot be read, run a fresh analysis. */ }
+    if (cached) {
+      const reused = {...cached, analysis_id: incoming.analysis_id, owner_id: incoming.owner_id,
+        created_at: incoming.created_at, updated_at: new Date().toISOString(),
+        research_cache: {hit: true, source: 'recent browser analysis'}};
+      await ArcStore.putAnalysis(reused);
+      window.location.assign('/analysis/' + encodeURIComponent(reused.analysis_id));
+      return;
+    }
+    await ArcStore.putAnalysis(incoming);
+    window.location.assign('/analysis/' + encodeURIComponent(incoming.analysis_id));
   } catch (error) {
     errorBox.textContent = error.message || 'Arc could not start this analysis.';
     errorBox.hidden = false; button.disabled = false; button.textContent = 'Start Acquisition Analysis';

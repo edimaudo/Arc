@@ -78,9 +78,27 @@ def test_mna_does_not_turn_qloo_recommendation_affinities_into_a_fit_score():
     assert result["scores"]["cultural_alignment"] is None
     assert result["cultural"]["qloo_signals"]["status"] == "available"
     assert result["cultural"]["qloo_signals"]["shared_affinities"]
+    assert result["cultural"]["qloo_signals"]["shared_affinities"][0]["name"] in result["report"]["cultural_takeaway"]
+    assert "directional audience and brand hypotheses" in result["report"]["cultural_takeaway"]
     first_category = result["cultural"]["qloo_signals"]["acquirer_profile"]["categories"][0]
     assert first_category["explainability"]["input_entity_influence"]
     assert first_category["results"][0]["explainability"]["input_entity_influence"]
+
+
+def test_grounded_request_uses_low_thinking_and_bounded_output_for_latency():
+    agent = ArcAgent()
+    agent.api_key = "test-key"
+    seen = {}
+
+    async def fake_post(payload):
+        seen.update(payload)
+        return {"status": "completed", "output_text": '{"summary":"Ready"}'}
+
+    agent._post_interaction = fake_post
+    result = asyncio.run(agent._web_search_json("Return a compact grounded result."))
+    assert result["data"]["summary"] == "Ready"
+    assert seen["generation_config"]["thinking_level"] == "low"
+    assert seen["generation_config"]["max_output_tokens"] <= 5000
 
 
 def test_qloo_cultural_signals_survive_gemini_outage():
@@ -224,6 +242,8 @@ def test_business_insights_prompt_always_covers_all_focus_areas():
     prompt = captured["prompt"]
     assert "Cover every business area in the schema on every run" in prompt
     assert "FOCUS:" not in prompt
+    assert "SECTOR:" not in prompt
+    assert "GEOGRAPHY:" not in prompt
     for required in ["business_overview", "current_trends", "competitive_landscape", "customer_and_product_signals", "growth_opportunities", "business_risks", "recommended_actions", "key_metrics_to_watch", "cultural_context"]:
         assert required in prompt
 
@@ -291,3 +311,24 @@ def test_qloo_http_responses_are_cached_for_identical_endpoint_parameters():
     assert first == second
     first["entities"].clear()
     assert len(second["entities"]) == 1
+
+
+def test_acquisition_runs_qloo_culture_even_if_cultural_scope_checkbox_is_off():
+    agent = ArcAgent()
+    agent.api_key = "test-key"
+    agent.qloo = FakeQloo()
+
+    async def grounded(prompt):
+        return {"data": {
+            "summary": "Grounded review.",
+            "findings": [{"type": "Finding", "title": "Public evidence", "body": "Initial review returned."}],
+            "risks": [], "opportunities": [], "diligence_questions": [],
+            "scores": {}, "financial": {}, "business": {}, "cultural": {},
+            "qloo_evidence": {}, "report": {"executive_summary": "Grounded review."},
+        }, "steps": []}
+
+    agent._web_search_json = grounded
+    result = asyncio.run(agent.run({"acquirer": "Northstar Foods", "target": "Maple Market", "scopes": ["financial", "business"], "documents": []}))
+    assert result["cultural"]["qloo_signals"]["status"] == "available"
+    assert result["cultural"]["qloo_signals"]["acquirer_profile"]["categories"]
+    assert result["cultural"]["qloo_signals"]["target_profile"]["categories"]

@@ -241,11 +241,17 @@ def test_acquisition_score_cards_are_compact_and_takeaway_includes_cultural_cont
     css = (root / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
     agent = (root / 'services' / 'agent_service.py').read_text(encoding='utf-8')
     report_service = (root / 'services' / 'report_service.py').read_text(encoding='utf-8')
-    assert "metric('Strategic fit',ov.strategic_fit,'Product, market and capability fit')" in analysis
-    assert "metric('Audience expansion',ov.audience_expansion,'Potential to reach adjacent audiences')" in analysis
-    assert "metric('Financial fit',ov.financial_fit,'Based on available financial evidence')" in analysis
+    assert "metric('Strategic fit',ov.strategic_fit,'Products, markets and capabilities')" in analysis
+    assert "metric('Cultural categories'" in analysis
+    assert "metric('Audience expansion',ov.audience_expansion,'Potential new audiences')" in analysis
+    assert "metric('Financial fit',ov.financial_fit,'Reported financial indicators')" in analysis
+    assert "metric('Integration fit',integrationFitValue(ov),'People, brand and systems')" in analysis
+    assert "if (risk === 'Low') return 'Favorable'" in analysis
+    assert "if (risk === 'High' || risk === 'Critical') return 'Challenging'" in analysis
     assert 'metric-card-summary .metric-value' in css
     assert 'metric-card-summary .metric-detail' in css
+    assert '-webkit-line-clamp: 2' in css
+    assert 'font-size: clamp(1.25rem, 1.7vw, 1.65rem)' in css
     assert 'href="#report">Acquisition Insight</a>' in analysis
     assert '<h2>Acquisition Takeaway</h2>' in analysis
     assert '<h3>Cultural implications</h3>' in analysis
@@ -256,6 +262,11 @@ def test_acquisition_score_cards_are_compact_and_takeaway_includes_cultural_cont
 def test_acquisition_report_tab_active_state_updates_on_click_scroll_and_document_bottom():
     analysis = (Path(__file__).parents[1] / 'app' / 'templates' / 'analysis.html').read_text(encoding='utf-8')
     assert "activate(link.getAttribute('href').slice(1))" in analysis
+    assert 'event.preventDefault()' in analysis
+    assert 'pendingSection = sectionId' in analysis
+    assert "target.scrollIntoView({" in analysis
+    assert 'pendingDeadline = performance.now() + 1800' in analysis
+    assert 'nav.getBoundingClientRect().bottom + 56' in analysis
     assert "window.addEventListener('scroll', scheduleUpdate, {passive: true})" in analysis
     assert 'const documentBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 6' in analysis
     assert 'activate(sections[sections.length - 1].id)' in analysis
@@ -266,8 +277,34 @@ def test_analysis_cache_and_browser_reuse_have_freshness_limits():
     agent = (Path(__file__).parents[1] / 'app' / 'services' / 'agent_service.py').read_text(encoding='utf-8')
     new_analysis = (Path(__file__).parents[1] / 'app' / 'templates' / 'new_analysis.html').read_text(encoding='utf-8')
     qloo = (Path(__file__).parents[1] / 'app' / 'qloo' / 'client.py').read_text(encoding='utf-8')
-    assert '_acquisition_cache_ttl_seconds = 15 * 60' in agent
+    assert '_acquisition_cache_ttl_seconds = 60 * 60' in agent
     assert 'self._save_acquisition_cache(key, result)' in agent
     assert '15 * 60' in qloo
-    assert '15 * 60 * 1000' in new_analysis
+    assert '60 * 60 * 1000' in new_analysis
     assert 'canonical(item) === canonical(incoming)' in new_analysis
+    assert 'GEMINI_THINKING_LEVEL' in agent
+    assert 'GEMINI_MAX_OUTPUT_TOKENS' in agent
+    assert 'max_output_tokens' in agent and 'thinking_level' in agent
+
+
+def test_business_insights_only_exposes_previously_searched_company_selector():
+    with TestClient(app, follow_redirects=False) as client:
+        client.post('/login', data={'email': DEMO_EMAIL, 'password': DEMO_PASSWORD, 'next': '/owner'})
+        response = client.get('/owner')
+    html = response.text
+    assert response.status_code == 200
+    assert 'id="insight-company"' in html
+    assert 'insight-sector' not in html
+    assert 'insight-geography' not in html
+    assert 'Industry (optional)' not in html
+    assert '<label>Geography' not in html
+    assert 'Choose a previously searched company' in html
+
+
+def test_financial_render_uses_readable_values_for_nested_objects():
+    source = (Path(__file__).parents[1] / 'app' / 'templates' / 'analysis.html').read_text(encoding='utf-8')
+    assert 'const financialText = value =>' in source
+    assert 'const financialMetric = (value, key) =>' in source
+    assert "esc(financialMetric(fin[k], k))" in source
+    assert "esc(financialText(fin.assessment))" in source
+    assert "esc(fin[k] ?? '—')" not in source

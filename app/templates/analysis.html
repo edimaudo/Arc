@@ -53,6 +53,17 @@
     if (/not assessed|pending|unknown|insufficient evidence|unavailable/i.test(text)) return 'Not assessed';
     return text.length <= 16 ? text : 'Review needed';
   };
+  const integrationFitValue = overview => {
+    if (overview?.integration_fit !== null && overview?.integration_fit !== undefined && overview?.integration_fit !== '') {
+      const score = scoreNumber(overview.integration_fit);
+      return score === null ? compactRisk(overview.integration_fit) : `${Math.round(Math.max(0, Math.min(100, score)))}%`;
+    }
+    const risk = compactRisk(overview?.integration_risk);
+    if (risk === 'Low') return 'Favorable';
+    if (risk === 'Moderate' || risk === 'Medium') return 'Mixed';
+    if (risk === 'High' || risk === 'Critical') return 'Challenging';
+    return 'Not assessed';
+  };
   const metric = (label, value, detail) => {
     const scoreLabel = ['Strategic fit', 'Audience expansion', 'Financial fit'].includes(label);
     const score = scoreLabel ? scoreNumber(value) : null;
@@ -66,6 +77,56 @@
     return `<article class="metric-card metric-card-summary"><span class="metric-label">${esc(label)}</span><strong class="${valueClass}">${esc(display)}</strong>${numeric ? `<div class="bar" aria-hidden="true"><i style="width:${barValue}%"></i></div>` : ''}<p class="metric-detail">${esc(detail || '')}</p></article>`;
   };
   const displayDetail = item => typeof item === 'string' ? item : (item?.detail || item?.body || item?.summary || item?.reason || item?.implication || item?.description || item?.action || '');
+  const financialText = value => {
+    if (value === null || value === undefined || value === '') return '—';
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (Array.isArray(value)) return value.map(financialText).filter(text => text && text !== '—').slice(0, 3).join(' · ') || '—';
+    if (typeof value === 'object') {
+      const priority = ['display', 'formatted', 'text', 'summary', 'assessment', 'detail', 'description', 'explanation', 'rationale', 'value', 'amount', 'estimate', 'percentage', 'percent', 'label', 'name', 'status'];
+      for (const key of priority) {
+        if (value[key] !== null && value[key] !== undefined && value[key] !== '' && typeof value[key] !== 'object') {
+          const rendered = financialText(value[key]);
+          if (rendered !== '—') return rendered;
+        }
+      }
+      const pairs = Object.entries(value).filter(([key, item]) => !['source', 'sources', 'url', 'evidence', 'citation', 'citations', 'updated_at', 'timestamp'].includes(key.toLowerCase()) && item !== null && item !== undefined && item !== '');
+      return pairs.slice(0, 3).map(([key, item]) => {
+        const rendered = financialText(item);
+        return rendered === '—' ? '' : `${key.replaceAll('_', ' ')}: ${rendered}`;
+      }).filter(Boolean).join(' · ') || 'Not available';
+    }
+    return 'Not available';
+  };
+  const financialMetric = (value, key) => {
+    if (value === null || value === undefined || value === '') return '—';
+    let raw = value;
+    let unit = '';
+    for (let depth = 0; depth < 5 && raw && typeof raw === 'object' && !Array.isArray(raw); depth++) {
+      if (!unit) unit = String(raw.unit || raw.units || raw.format || '').toLowerCase();
+      const keys = ['display', 'formatted', 'text', 'value', 'amount', 'estimate', 'percentage', 'percent'];
+      const next = keys.find(k => raw[k] !== undefined && raw[k] !== null && raw[k] !== '');
+      if (!next) break;
+      raw = raw[next];
+    }
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      if (['revenue_growth', 'ebitda_margin', 'customer_concentration'].includes(key)) {
+        const percentage = unit.includes('%') || unit.includes('percent') ? raw : (Math.abs(raw) <= 1 ? raw * 100 : raw);
+        return `${Number(percentage.toFixed(1)).toString()}%`;
+      }
+      if (key === 'net_debt_to_ebitda') return `${Number(raw.toFixed(2)).toString()}x`;
+      return String(raw);
+    }
+    const readable = financialText(raw);
+    if (readable === '—') return readable;
+    if (['revenue_growth', 'ebitda_margin', 'customer_concentration'].includes(key) && /^-?\d+(?:\.\d+)?$/.test(readable)) {
+      const n = Number(readable);
+      const percentage = unit.includes('%') || unit.includes('percent') ? n : (Math.abs(n) <= 1 ? n * 100 : n);
+      return `${Number(percentage.toFixed(1)).toString()}%`;
+    }
+    if (key === 'net_debt_to_ebitda' && /^-?\d+(?:\.\d+)?$/.test(readable)) return `${readable}x`;
+    return readable;
+  };
+
   const cultureList = (values, empty) => {
     if (values === undefined || values === null || values === '') return `<p class="muted">${esc(empty)}</p>`;
     if (typeof values === 'string') return `<p>${esc(values)}</p>`;
@@ -119,10 +180,10 @@
     else { alertBox.hidden = true; }
     root.innerHTML = `
       <section class="tabs analysis-tabs" aria-label="Analysis sections"><a class="active" href="#overview">Overview</a><a href="#financial">Financial Intelligence</a><a href="#business">Business Intelligence</a><a href="#cultural">Cultural Intelligence</a><a href="#risks">Risks &amp; synergies</a><a href="#report">Acquisition Insight</a></section>
-      <section id="overview" class="metric-grid">${metric('Strategic fit',ov.strategic_fit,'Product, market and capability fit')}${metric('Cultural categories', (() => { const categories = [...list(qlooSignals.acquirer_profile?.categories), ...list(qlooSignals.target_profile?.categories)]; const names = [...new Set(categories.filter(x => list(x.results).length).map(x => x.label || x.entity_type).filter(Boolean))]; return names.length ? `${names.length} categories` : 'Not available'; })(),'Brands, music, places, film and TV')}${metric('Audience expansion',ov.audience_expansion,'Potential to reach adjacent audiences')}${metric('Financial fit',ov.financial_fit,'Based on available financial evidence')}${metric('Integration risk',ov.integration_risk,'People, brands, systems and operations')}</section>
+      <section id="overview" class="metric-grid">${metric('Strategic fit',ov.strategic_fit,'Products, markets and capabilities')}${metric('Cultural categories', (() => { const categories = [...list(qlooSignals.acquirer_profile?.categories), ...list(qlooSignals.target_profile?.categories)]; const names = [...new Set(categories.filter(x => list(x.results).length).map(x => x.label || x.entity_type).filter(Boolean))]; return names.length ? `${names.length} categories` : 'Not available'; })(),'Brands, media and places')}${metric('Audience expansion',ov.audience_expansion,'Potential new audiences')}${metric('Financial fit',ov.financial_fit,'Reported financial indicators')}${metric('Integration fit',integrationFitValue(ov),'People, brand and systems')}</section>
       <section class="content-grid"><div class="panel span-2"><div class="panel-head"><h2>Executive findings</h2></div>${findings.length ? findings.map(finding).join('') : '<p class="muted">No supported findings were returned yet. Arc researches both companies from public sources whether or not documents are uploaded.</p>'}</div>
       <div class="panel"><div class="panel-head"><h2>Deal materials</h2><span class="muted">${docs.length} files</span></div>${items(docs.map(d=>d.filename),'No materials uploaded.')}<div class="panel-head" style="margin-top:24px"><h2>Methodology</h2></div><p class="muted">Arc combines financial evidence, business research, cultural analysis, deterministic scoring, and AI-assisted synthesis. Findings remain tied to available evidence, with unresolved questions surfaced for human diligence.</p></div></section>
-      <section id="financial" class="content-grid"><div class="panel span-2"><div class="panel-head"><h2>Financial Intelligence</h2></div>${Object.keys(fin).length ? `<div class="score-row">${[['Revenue growth','revenue_growth'],['EBITDA margin','ebitda_margin'],['Net debt / EBITDA','net_debt_to_ebitda'],['Customer concentration','customer_concentration']].map(([l,k])=>`<div><span>${l}</span><strong>${esc(fin[k] ?? '—')}</strong></div>`).join('')}</div><p class="muted">${esc(fin.assessment || '')}</p>` : '<p class="muted">Financial evidence has not been analyzed yet.</p>'}</div></section>
+      <section id="financial" class="content-grid"><div class="panel span-2"><div class="panel-head"><h2>Financial Intelligence</h2></div>${Object.keys(fin).length ? `<div class="score-row">${[['Revenue growth','revenue_growth'],['EBITDA margin','ebitda_margin'],['Net debt / EBITDA','net_debt_to_ebitda'],['Customer concentration','customer_concentration']].map(([l,k])=>`<div><span>${l}</span><strong>${esc(financialMetric(fin[k], k))}</strong></div>`).join('')}</div>${fin.assessment ? `<p class="muted">${esc(financialText(fin.assessment))}</p>` : ''}` : '<p class="muted">Financial evidence has not been analyzed yet.</p>'}</div></section>
       <section id="business" class="content-grid"><div class="panel span-2"><div class="panel-head"><h2>Business Intelligence</h2></div>${Object.keys(biz).length ? `<div class="two-col"><div><span class="muted">Business model</span><p>${esc(biz.model || 'Not provided')}</p></div><div><span class="muted">Market</span><p>${esc(biz.market || 'Not provided')}</p></div></div><h3>Strategic rationale</h3><p class="muted">${esc(biz.strategic_rationale || 'Not provided')}</p><h3>Open questions</h3>${items(biz.open_questions,'No open business questions returned.')}` : '<p class="muted">Business analysis has not been completed yet.</p>'}</div></section>
       <section id="cultural" class="content-grid"><div class="panel span-2 cultural-section"><div class="panel-head"><h2>Cultural Intelligence</h2><span class="status">${esc(({available:'Cultural data available',partial:'Partial cultural data',unavailable:'Cultural data unavailable'}[(cul.qloo_signals || {}).status] || 'Cultural data status unknown'))}</span></div><p>${esc(cul.profile_summary || 'Cultural signals help explain audience affinities, brand relevance and possible integration challenges. Affinity scores are directional, not direct measures of customer overlap or revenue.')}</p>
         <div class="culture-tabs" role="tablist" aria-label="Cultural intelligence views">
@@ -163,14 +224,25 @@
       link.classList.toggle('active', active);
       if (active) link.setAttribute('aria-current', 'location'); else link.removeAttribute('aria-current');
     });
+    let pendingSection = null;
+    let pendingDeadline = 0;
+    let pendingTimer = 0;
     const update = () => {
       if (!sections.length) return;
+      const line = nav.getBoundingClientRect().bottom + 56;
+      if (pendingSection) {
+        const target = sections.find(section => section.id === pendingSection);
+        if (target && performance.now() < pendingDeadline && Math.abs(target.getBoundingClientRect().top - line) > 64) {
+          activate(pendingSection);
+          return;
+        }
+        pendingSection = null;
+      }
       const documentBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 6;
       if (documentBottom) {
         activate(sections[sections.length - 1].id);
         return;
       }
-      const line = nav.getBoundingClientRect().bottom + 22;
       const passed = sections.filter(section => section.getBoundingClientRect().top <= line);
       activate((passed.length ? passed[passed.length - 1] : sections[0]).id);
     };
@@ -179,9 +251,27 @@
       if (frame) return;
       frame = window.requestAnimationFrame(() => { frame = 0; update(); });
     };
-    links.forEach(link => link.addEventListener('click', () => {
+    links.forEach(link => link.addEventListener('click', event => {
+      event.preventDefault();
+      const sectionId = link.getAttribute('href').slice(1);
       activate(link.getAttribute('href').slice(1));
-      window.requestAnimationFrame(scheduleUpdate);
+      pendingSection = sectionId;
+      pendingDeadline = performance.now() + 1800;
+      if (pendingTimer) window.clearTimeout(pendingTimer);
+      const target = sections.find(section => section.id === sectionId);
+      if (target) target.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'start'
+      });
+      if (window.history?.replaceState) window.history.replaceState(null, '', `#${sectionId}`);
+      scheduleUpdate();
+      pendingTimer = window.setTimeout(() => {
+        pendingTimer = 0;
+        if (pendingSection === sectionId) {
+          pendingSection = null;
+          scheduleUpdate();
+        }
+      }, 1900);
     }));
     let observer = null;
     if ('IntersectionObserver' in window) {
@@ -195,6 +285,7 @@
       window.removeEventListener('resize', scheduleUpdate);
       if (observer) observer.disconnect();
       if (frame) window.cancelAnimationFrame(frame);
+      if (pendingTimer) window.clearTimeout(pendingTimer);
       cleanupAnalysisNavigation = null;
     };
     update();

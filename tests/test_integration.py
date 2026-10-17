@@ -45,7 +45,7 @@ class DiscoveryStub:
 
 class BusinessInsightsStub:
     async def research_business_insights(self, args):
-        return {'insights': {'company': args['company'] or 'Industry overview', 'sector': args['sector'],
+        return {'insights': {'company': args['company'] or 'Industry overview', 'sector': args.get('sector', ''),
                             'business_overview': 'A public company operating overview.',
                             'current_trends': [{'title': 'Demand shift', 'detail': 'Customers are shifting to online channels.'}],
                             'competitive_landscape': [{'name': 'Peer Co', 'summary': 'A competitor in the same category.'}],
@@ -270,3 +270,24 @@ class IntegrationTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def test_business_insights_api_requires_a_searched_company_and_does_not_pass_hidden_filters():
+    original = dashboard._agent
+    captured = {}
+    class CaptureInsights:
+        async def research_business_insights(self, args):
+            captured.update(args)
+            return {'insights': {'company': args['company'], 'business_overview': 'Overview', 'sources': []}, 'search_activity': []}
+    dashboard._agent = CaptureInsights()
+    try:
+        with TestClient(app, follow_redirects=False) as client:
+            client.post('/login', data={'email': DEMO_EMAIL, 'password': DEMO_PASSWORD, 'next': '/owner'})
+            response = client.post('/owner/api/insights', json={'company':'Example Co','sector':'Retail','geography':'Canada'})
+            blank = client.post('/owner/api/insights', json={})
+        assert response.status_code == 200
+        assert captured == {'company': 'Example Co'}
+        assert blank.status_code == 400
+        assert 'previously searched company' in blank.json()['detail']
+    finally:
+        dashboard._agent = original

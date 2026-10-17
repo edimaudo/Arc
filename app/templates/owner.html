@@ -1,11 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Business Insights — Arc{% endblock %}
 {% block content %}
-<section class="wrap page-head"><div><h1>Business Insights</h1><p class="muted">Understand how a company or industry operates: its business model, market trends, customers and products, competitive position, risks, and what management should do next.</p></div></section>
+<section class="wrap page-head"><div><h1>Business Insights</h1><p class="muted">Understand how a company operates: its business model, market trends, customers and products, competitive position, risks, and what management should do next.</p></div></section>
 <section class="wrap panel business-research-panel">
   <form id="business-insights-form">
-    <label>Company<select id="insight-company" aria-describedby="company-history-help"><option value="">Choose a previously searched company…</option></select></label><p class="muted" id="company-history-help">Only companies with a saved search appear here. You can also research an industry below.</p>
-    <div class="two-col"><label>Industry (optional)<input id="insight-sector" placeholder="e.g. Retail, software, financial services"></label><label>Geography<input id="insight-geography" value="Canada" placeholder="Country or region"></label></div>
+    <label>Company<select id="insight-company" required aria-describedby="company-history-help"><option value="">Choose a previously searched company…</option></select></label><p class="muted" id="company-history-help">Only companies you have already searched appear here.</p>
     <div><button class="button primary" id="run-business-insights" type="submit">Research business</button></div>
   </form>
 </section>
@@ -17,8 +16,6 @@
   const button = document.getElementById('run-business-insights');
   const root = document.getElementById('business-insights-results');
   const companyInput = document.getElementById('insight-company');
-  const sectorInput = document.getElementById('insight-sector');
-  const geographyInput = document.getElementById('insight-geography');
   const searchedCompanies = new Map();
   let sourceContextId = ''; 
   const esc = v => String(v ?? '').replace(/\bqloo\b/gi, 'cultural data source').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -79,8 +76,8 @@
     root.innerHTML = `<div class="business-report-head"><div><h2>${esc(report.company || criteria.company || criteria.sector || 'Business overview')}</h2><p class="muted">${esc(report.sector || criteria.sector || 'Industry research')}${(report.geography || criteria.geography) ? ' · ' + esc(report.geography || criteria.geography) : ''}</p></div><span class="muted report-timestamp">${savedAt ? `Updated ${esc(savedAt)}` : ''}</span></div><section class="panel insight-panel"><h2>Business overview</h2><p>${esc(overview || 'No verified overview was returned. Use the source links below to validate company details, or retry research.')}</p>${report.business_model ? `<p><strong>Business model:</strong> ${esc(report.business_model)}</p>` : ''}${report.market_position ? `<p><strong>Market position:</strong> ${esc(report.market_position)}</p>` : ''}</section>${listPanel('Market trends', array(report.current_trends))}<section class="panel insight-panel"><h2>Competitive landscape</h2>${competitorBody}</section>${qlooCulturePanel(cultural)}${listPanel('Customer and product signals', array(report.customer_and_product_signals))}${listPanel('Growth opportunities', array(report.growth_opportunities))}${listPanel('Business risks', array(report.business_risks))}${listPanel('Recommended actions', array(report.recommended_actions))}${listPanel('Metrics to monitor', array(report.key_metrics_to_watch))}${sourcePanel(report.sources)}<p class="muted report-timestamp">Research completed ${esc(savedAt || '')}. Verify material claims with the linked sources before relying on them.</p>`;
   }
   async function research(criteria, contextId = '') {
-    if (!criteria.company && !criteria.sector) {
-      root.innerHTML = '<div class="empty-state"><h2>Add a company or industry</h2><p class="muted">At least one is required to begin research.</p></div>';
+    if (!criteria.company) {
+      root.innerHTML = '<div class="empty-state"><h2>Choose a company</h2><p class="muted">Select a previously searched company to begin research.</p></div>';
       return;
     }
     button.disabled = true; button.setAttribute('aria-busy', 'true'); button.textContent = 'Getting results…';
@@ -100,14 +97,12 @@
   }
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    const criteria = {company:companyInput.value.trim(), sector:sectorInput.value.trim(), geography:geographyInput.value.trim() || 'Canada'};
+    const criteria = {company:companyInput.value.trim()};
     await research(criteria, sourceContextId);
   });
   companyInput.addEventListener('change', () => {
     const chosen = searchedCompanies.get(companyInput.value.toLocaleLowerCase());
     sourceContextId = chosen?.sourceContextId || '';
-    if (chosen?.sector) sectorInput.value = chosen.sector;
-    if (chosen?.geography) geographyInput.value = chosen.geography;
   });
   async function prefillCompanyContext() {
     const [analyses, discoveries, insights] = await Promise.all([
@@ -149,10 +144,8 @@
     if (preferred) {
       companyInput.value = preferred.name;
       sourceContextId = preferred.sourceContextId;
-      if (preferred.sector) sectorInput.value = preferred.sector;
-      if (preferred.geography) geographyInput.value = preferred.geography;
     }
-    // No company is manually entered or invented. Industry-only research remains available.
+    // Only explicitly searched company names appear in this selector.
   }
   prefillCompanyContext().catch(error => console.warn('Saved company context could not be loaded.'));
 })();

@@ -35,14 +35,11 @@ async def business_insights_api(request: Request):
     if not isinstance(payload, dict):
         payload = {}
     company = str(payload.get('company') or '').strip()
-    sector = str(payload.get('sector') or '').strip()
-    if not company and not sector:
-        raise HTTPException(status_code=400, detail='Enter a company or an industry to research.')
-    criteria = {
-        'company': company,
-        'sector': sector,
-        'geography': str(payload.get('geography') or 'Canada').strip() or 'Canada',
-    }
+    if not company:
+        raise HTTPException(status_code=400, detail='Choose a previously searched company to research.')
+    # Industry and operating geography are inferred from public company information,
+    # not exposed as separate user-entered filters in Business Insights.
+    criteria = {'company': company}
     try:
         result = await _agent.research_business_insights(criteria)
     except Exception as exc:

@@ -46,7 +46,7 @@ form?.addEventListener('submit', async event => {
         && !item.limited_mode
         && item.completed_at
         && now - Date.parse(item.completed_at) >= 0
-        && now - Date.parse(item.completed_at) <= 15 * 60 * 1000
+        && now - Date.parse(item.completed_at) <= 60 * 60 * 1000
         && canonical(item) === canonical(incoming));
     } catch (_) { /* If browser history cannot be read, run a fresh analysis. */ }
     if (cached) {

@@ -11,7 +11,7 @@ from typing import Any, Awaitable, Callable
 
 import httpx
 
-from app.config import GEMINI_API_KEY, GEMINI_MODEL, GEMINI_TIMEOUT_SECONDS
+from app.config import GEMINI_API_KEY, GEMINI_MODEL, GEMINI_TIMEOUT_SECONDS, GEMINI_THINKING_LEVEL, GEMINI_MAX_OUTPUT_TOKENS
 from app.qloo.client import QlooAPIError, QlooClient
 
 ToolHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
@@ -35,7 +35,9 @@ class ArcAgent:
         # inputs never share a report accidentally.
         self._acquisition_result_cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._acquisition_cache_locks: dict[str, asyncio.Lock] = {}
-        self._acquisition_cache_ttl_seconds = 15 * 60
+        # Warm instance + IndexedDB browser reuse. Reports are time-bounded because
+        # company facts can change, while identical repeated analyses should be fast.
+        self._acquisition_cache_ttl_seconds = 60 * 60
         self._handlers: dict[str, ToolHandler] = {
             "qloo_lookup_entities": self.qloo_lookup_entities,
             "qloo_cultural_insights": self.qloo_cultural_insights,
@@ -193,8 +195,9 @@ class ArcAgent:
                     return cached
                 result = await self._run_uncached(goal, max_turns=max_turns)
                 qloo_status = ((result.get("cultural") or {}).get("qloo_signals") or {}).get("status") if isinstance(result, dict) else None
-                scopes = {str(scope).casefold() for scope in (goal.get("scopes") or ["financial", "business", "cultural", "integration"])}
-                cultural_cache_ok = "cultural" not in scopes or qloo_status in {"available", "partial"}
+                # Culture is Arc's core differentiator: only cache a completed result
+                # when real Qloo evidence was returned, regardless of optional scope toggles.
+                cultural_cache_ok = qloo_status in {"available", "partial"}
                 if isinstance(result, dict) and not result.get("limited_mode") and cultural_cache_ok and (result.get("report") or result.get("findings")):
                     self._save_acquisition_cache(key, result)
                 return copy.deepcopy(result)
@@ -232,6 +235,7 @@ class ArcAgent:
             "metrics as additional evidence, distinguish management-provided data from public facts, and flag conflicts or missing support. "
             "Never invent facts, figures, URLs, quotations, sources or Qloo results. Keep unsupported numeric scores null and state evidence gaps. "
             "Return valid JSON only with these keys: summary, findings, risks, opportunities, diligence_questions, scores, financial, business, cultural, qloo_evidence, report. "
+            "Keep output compact to reduce wait time: summary and cultural_takeaway up to 2 sentences each, at most 5 findings, 4 risks, 3 opportunities, 5 diligence questions and 8 sources. Each finding body should be at most 45 words. "
             "findings must be a list of objects with type, title, body and evidence; risks and opportunities must be concise lists of objects with title, body and evidence where available; "
             "diligence_questions must be a list of practical questions. scores may contain strategic_fit, cultural_fit, audience_expansion, financial_fit and integration_risk, "
             "but use null or 'Not assessed' wherever public evidence is insufficient. financial must contain revenue_growth, ebitda_margin, net_debt_to_ebitda, customer_concentration and assessment, "
@@ -242,9 +246,8 @@ class ArcAgent:
         )
 
         async def bounded_qloo_seed() -> dict[str, Any]:
-            scopes = {str(scope).lower() for scope in brief["scopes"]}
-            if "cultural" not in scopes:
-                return {"acquirer": [], "target": [], "comparison": {}, "errors": ["Cultural analysis was not requested."]}
+            # Always request live cultural signals: Cultural Intelligence is a core
+            # Arc capability, not something disabled by the financial/business scopes.
             try:
                 return await asyncio.wait_for(self._seed_qloo_context(brief), timeout=6.5)
             except Exception as exc:
@@ -289,6 +292,14 @@ class ArcAgent:
         }
         result["cultural"] = cultural
         result["qloo_evidence"] = {"preflight": seed, **(result.get("qloo_evidence") or {})}
+        report = result.get("report") if isinstance(result.get("report"), dict) else {}
+        report["cultural_takeaway"] = self._compose_cultural_takeaway(
+            seed,
+            str(brief.get("acquirer") or "Acquirer"),
+            str(brief.get("target") or "Target"),
+            str(report.get("cultural_takeaway") or ""),
+        )
+        result["report"] = report
         if seed.get("acquirer") or seed.get("target") or seed.get("comparison"):
             activity.append({"tool": "qloo_preflight", "status": "complete", "result": "Qloo company-entity and cultural comparison context attached."})
         elif seed.get("errors"):
@@ -300,6 +311,54 @@ class ArcAgent:
         result["scores"]["cultural_alignment"] = None
         result["activity"] = activity
         return result
+
+    @staticmethod
+    def _compose_cultural_takeaway(seed: dict[str, Any], acquirer: str, target: str, existing: str = "") -> str:
+        """Make the report takeaway specific to returned cultural evidence, not generic copy."""
+        shared = [item for item in seed.get("shared_affinities", []) if isinstance(item, dict) and item.get("name")][:3]
+        acquirer_only = [item for item in seed.get("acquirer_distinctive", []) if isinstance(item, dict) and item.get("name")][:3]
+        target_only = [item for item in seed.get("target_distinctive", []) if isinstance(item, dict) and item.get("name")][:3]
+
+        def names(values: list[dict[str, Any]]) -> str:
+            return ", ".join(
+                f"{item['name']} ({item.get('category')})" if item.get("category") else str(item["name"])
+                for item in values
+            )
+
+        sentences: list[str] = []
+        if shared:
+            sentences.append(
+                f"The cultural profiles for {acquirer} and {target} share affinity signals around {names(shared)}. "
+                "These are directional audience and brand hypotheses, not proof of shared customers or incremental revenue."
+            )
+        if acquirer_only or target_only:
+            sides = []
+            if acquirer_only:
+                sides.append(f"{acquirer} shows distinctive signals around {names(acquirer_only)}")
+            if target_only:
+                sides.append(f"{target} shows distinctive signals around {names(target_only)}")
+            sentences.append(
+                "; while ".join(sides) + ". Test whether these differences create complementary audience reach or brand-integration risks using customer and market evidence."
+            )
+        if not sentences:
+            comparison = (seed.get("comparison") or {}).get("results", [])
+            comparison_names = [str(item.get("name")) for item in comparison if isinstance(item, dict) and item.get("name")][:3]
+            if comparison_names:
+                sentences.append(
+                    f"The returned cross-company cultural comparison surfaced {', '.join(comparison_names)} as related signals. "
+                    "Treat these as leads for brand and audience validation, not confirmed customer overlap."
+                )
+        signal_summary = " ".join(sentences).strip()
+        if signal_summary:
+            existing = re.sub(r"\s+", " ", existing).strip()
+            # Keep a distinct, company-specific model interpretation, but avoid carrying
+            # an empty/generic provider fallback into the report.
+            if existing and existing.casefold() not in {signal_summary.casefold(), "no cultural findings were returned."}:
+                return (existing[:360].rstrip() + " " + signal_summary)[:900]
+            return signal_summary[:900]
+        if existing:
+            return existing[:700]
+        return "No company-specific cultural takeaway is available because the research did not return usable shared or distinctive signals. Do not infer cultural fit from missing evidence."
 
     def _qloo_only_report(self, goal: dict[str, Any], seed: dict[str, Any], notice: str) -> dict[str, Any]:
         """Keep genuine Qloo culture evidence visible when Gemini is unavailable."""
@@ -362,7 +421,7 @@ class ArcAgent:
             "financial": {"assessment": "Not assessed: live public-source research is unavailable."},
             "business": {"model": "Not verified", "market": "Not verified", "strategic_rationale": "Not assessed", "open_questions": questions},
             "cultural": cultural, "qloo_evidence": {"preflight": seed},
-            "report": {"executive_summary": summary, "cultural_takeaway": cultural["profile_summary"], "deal_fit": {}, "key_risks": risks, "growth_opportunities": [], "next_steps": questions, "disclaimer": "Limited mode: only available cultural signals are reported. Validate all material business and financial claims with independent sources.", "service_notice": notice},
+            "report": {"executive_summary": summary, "cultural_takeaway": self._compose_cultural_takeaway(seed, acquirer, target, cultural["profile_summary"]), "deal_fit": {}, "key_risks": risks, "growth_opportunities": [], "next_steps": questions, "disclaimer": "Limited mode: only available cultural signals are reported. Validate all material business and financial claims with independent sources.", "service_notice": notice},
         }
 
     async def _resolve_company_entities(self, query: str) -> list[dict[str, Any]]:
@@ -659,6 +718,10 @@ class ArcAgent:
             "model": self.model,
             "input": prompt,
             "tools": [{"type": "google_search"}],
+            "generation_config": {
+                "max_output_tokens": GEMINI_MAX_OUTPUT_TOKENS,
+                "thinking_level": GEMINI_THINKING_LEVEL,
+            },
         }
         interaction = await self._post_interaction(payload)
         if interaction.get("status") == "failed":
@@ -692,13 +755,14 @@ class ArcAgent:
         return result
 
     async def research_business_insights(self, args: dict[str, Any]) -> dict[str, Any]:
-        """Research a business as an operating company, independent of an acquisition assignment."""
+        """Research a previously searched company, inferring its industry and operating markets."""
         company = str(args.get("company") or "").strip()
-        sector = str(args.get("sector") or "").strip()
-        geography = str(args.get("geography") or "Canada").strip() or "Canada"
+        if not company:
+            raise ValueError("Choose a previously searched company to research.")
         prompt = (
-            "Produce practical, current BUSINESS INSIGHTS about the named company and/or industry. "
+            "Produce practical, current BUSINESS INSIGHTS about the named company. "
             "This is ordinary business research, not acquisition analysis: do not discuss acquisitions, deal fit, integration, buyers, sellers, or transaction rationale. "
+            "Infer the company's industry and operating geography from public evidence; do not assume a country when the sources do not establish one. "
             "Use Google Search grounding and return JSON only with keys: company, sector, geography, business_overview, business_model, "
             "market_position, current_trends, competitive_landscape, customer_and_product_signals, growth_opportunities, "
             "business_risks, recommended_actions, key_metrics_to_watch, cultural_context, sources. "
@@ -710,40 +774,44 @@ class ArcAgent:
             "Distinguish sourced observations from hypotheses and never stereotype demographics. "
             "sources must be a list of objects containing title and url. Ground factual claims in public sources, include useful sources, "
             "separate facts from interpretation, and never invent revenue, market share, financial metrics, URLs, or sources. "
-            "For unavailable information, state that it is not publicly disclosed rather than guessing. Prioritize actionable observations over generic advice.\n"
-            f"COMPANY: {company or 'Not specified'}\nSECTOR: {sector or 'Infer from company if supported'}\n"
-            f"GEOGRAPHY: {geography}\n"
-            "Cover every business area in the schema on every run; do not narrow the report to a single selected focus. "
+            "For unavailable information, state that it is not publicly disclosed rather than guessing. Prioritize actionable observations over generic advice. "
+            "Cover every business area in the schema on every run; do not narrow the report to a selected focus.\n"
+            f"COMPANY: {company}\n"
         )
-        subject = company or sector
+
         async def bounded_qloo_profile():
             try:
-                return await asyncio.wait_for(self._qloo_profile_for_query(subject, geography), timeout=6.0)
+                # No geography filter is supplied by the user; resolve the company with
+                # Qloo and retrieve cultural affinities across supported entity categories.
+                return await asyncio.wait_for(self._qloo_profile_for_query(company, None), timeout=6.0)
             except Exception as exc:
-                return {"status": "unavailable", "subject": subject, "matched_entities": [], "categories": [], "top_affinities": [], "note": "Qloo cultural signals are temporarily unavailable.", "errors": [self._safe_error(exc)]}
+                return {"status": "unavailable", "subject": company, "matched_entities": [], "categories": [], "top_affinities": [], "note": "Cultural affinity signals are temporarily unavailable.", "errors": [self._safe_error(exc)]}
+
         search, qloo_profile = await asyncio.gather(self._web_search_json(prompt), bounded_qloo_profile(), return_exceptions=True)
         if isinstance(search, BaseException):
-            if isinstance(qloo_profile, dict) and qloo_profile.get("status") == "available":
-                limited_note = "Live public-source research is temporarily unavailable. Company-specific operating facts, competitor details and market claims were not verified in this response."
+            if isinstance(qloo_profile, dict) and qloo_profile.get("status") in {"available", "partial"}:
+                limited_note = "Live public-source research is temporarily unavailable. Operating facts, competitor details and market claims were not verified in this response."
                 return {"insights": {
-                    "company": company or "Industry overview", "sector": sector, "geography": geography,
-                    "business_overview": limited_note, "business_model": "Not verified", "market_position": "Not verified",
+                    "company": company, "business_overview": limited_note, "business_model": "Not verified", "market_position": "Not verified",
                     "current_trends": [], "competitive_landscape": [], "customer_and_product_signals": [],
                     "growth_opportunities": [], "business_risks": [], "recommended_actions": [], "key_metrics_to_watch": [],
                     "cultural_context": {},
                     "cultural_intelligence": {"public_context": {}, "qloo_profile": qloo_profile,
-                        "interpretation_note": "Public-source research was unavailable. Qloo affinity recommendations are directional taste signals, not a direct measure of customer overlap, revenue or market share."},
+                        "interpretation_note": "Public-source research was unavailable. Cultural affinities are directional taste signals, not a direct measure of customer overlap, revenue or market share."},
                     "sources": [], "research_status": "limited",
-                }, "search_activity": [{"tool": "qloo_business_profile", "status": "complete", "result": "Qloo culture preserved while public-source research is unavailable."}]}
+                }, "search_activity": [{"tool": "cultural_profile", "status": "complete", "result": "Cultural signals preserved while public research is unavailable."}]}
             raise search
+
         insights = search["data"]
-        insights.setdefault("company", company or "Industry overview")
-        insights.setdefault("sector", sector)
-        insights.setdefault("geography", geography)
+        insights.setdefault("company", company)
         public_culture = insights.get("cultural_context") if isinstance(insights.get("cultural_context"), dict) else {}
-        if isinstance(qloo_profile, BaseException):
-            qloo_profile = {"status": "unavailable", "subject": subject, "matched_entities": [], "categories": [], "top_affinities": [], "note": "Qloo cultural signals are temporarily unavailable."}
-        insights["cultural_intelligence"] = {"public_context": public_culture, "qloo_profile": qloo_profile, "interpretation_note": "Public-source cultural research and Qloo affinity recommendations are complementary evidence. Qloo affinity is directional and should not be read as a direct measure of customer overlap, revenue, or market share."}
+        if isinstance(qloo_profile, BaseException) or not isinstance(qloo_profile, dict):
+            qloo_profile = {"status": "unavailable", "subject": company, "matched_entities": [], "categories": [], "top_affinities": [], "note": "Cultural affinity signals are temporarily unavailable."}
+        insights["cultural_intelligence"] = {
+            "public_context": public_culture,
+            "qloo_profile": qloo_profile,
+            "interpretation_note": "Public-source cultural research and cultural affinity recommendations are complementary evidence. Affinities are directional and should not be read as direct measures of customer overlap, revenue, or market share.",
+        }
         return {"insights": insights, "search_activity": search.get("steps", [])}
 
     async def find_comparable_companies(self, args: dict[str, Any]) -> dict[str, Any]:

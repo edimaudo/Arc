@@ -28,6 +28,9 @@ _configured_gemini_model = env('GEMINI_MODEL', 'gemini-3.5-flash')
 # Migrate the previous application default even when it remains set in Vercel/.env.
 GEMINI_MODEL = 'gemini-3.5-flash' if _configured_gemini_model == 'gemini-2.5-pro' else _configured_gemini_model
 GEMINI_TIMEOUT_SECONDS = float(env('GEMINI_TIMEOUT_SECONDS', '60') or '60')
+_configured_thinking_level = env('GEMINI_THINKING_LEVEL', 'low').lower()
+GEMINI_THINKING_LEVEL = _configured_thinking_level if _configured_thinking_level in {'minimal', 'low', 'medium', 'high'} else 'low'
+GEMINI_MAX_OUTPUT_TOKENS = max(1200, min(5000, int(env('GEMINI_MAX_OUTPUT_TOKENS', '2800') or '2800')))
 MAX_DOCUMENT_BYTES = int(env('MAX_DOCUMENT_BYTES', '12000000') or '12000000')
 MAX_DOCUMENTS_PER_ANALYSIS = int(env('MAX_DOCUMENTS_PER_ANALYSIS', '8') or '8')
 MAX_TOOL_TURNS = int(env('MAX_TOOL_TURNS', '12') or '12')

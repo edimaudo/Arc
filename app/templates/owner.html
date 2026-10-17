@@ -29,10 +29,17 @@
     if (!Number.isFinite(n)) return text.replace(/\b(-?\d+(?:\.\d+)?)\s*\/\s*100\b/g, '$1%').replace(/\s+affinity\s*$/i, '');
     return `${Math.round(n >= 0 && n <= 1 ? n * 100 : n)}%`;
   };
-  function textItem(item) { return typeof item === 'string' ? item : (item?.detail || item?.summary || item?.reason || item?.description || item?.action || ''); }
+  function textItem(item) { return typeof item === 'string' ? item : (item?.detail || item?.summary || item?.description || item?.body || item?.rationale || item?.impact || item?.next_step || ''); }
+  function normalizedText(value) { return String(value || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase(); }
   function listPanel(title, values) {
     const body = values.length
-      ? `<div class="insight-list">${values.map(v => typeof v === 'string' ? `<p>${esc(v)}</p>` : `<article><h3>${esc(v.title || v.name || v.priority || v.action || v.metric || 'Observation')}</h3><p>${esc(textItem(v) || 'No supporting detail was returned.')}</p>${v.reason ? `<p class="muted">${esc(v.reason)}</p>` : ''}${v.website && /^https?:\/\//i.test(v.website) ? `<a class="text-link" href="${esc(v.website)}" target="_blank" rel="noopener noreferrer">Website ↗</a>` : ''}</article>`).join('')}</div>`
+      ? `<div class="insight-list">${values.map(v => {
+          if (typeof v === 'string') return `<p>${esc(v)}</p>`;
+          const heading = v.title || v.name || v.priority || v.action || v.metric || 'Observation';
+          const detail = textItem(v);
+          const reason = v.reason && normalizedText(v.reason) !== normalizedText(heading) && normalizedText(v.reason) !== normalizedText(detail) ? v.reason : '';
+          return `<article><h3>${esc(heading)}</h3>${detail && normalizedText(detail) !== normalizedText(heading) ? `<p>${esc(detail)}</p>` : ''}${reason ? `<p class="muted">${esc(reason)}</p>` : ''}${v.website && /^https?:\/\//i.test(v.website) ? `<a class="text-link" href="${esc(v.website)}" target="_blank" rel="noopener noreferrer">Website ↗</a>` : ''}</article>`;
+        }).join('')}</div>`
       : '<p class="muted">No verified findings were returned for this section. Review the linked sources or run the research again.</p>';
     return `<section class="panel insight-panel"><h2>${title}</h2>${body}</section>`;
   }
@@ -73,7 +80,11 @@
     const competitorBody = competitors.length
       ? `<div class="insight-list">${competitors.map(c => `<article><h3>${esc(c.name || 'Competitor')}</h3><p>${esc(c.summary || c.detail || 'No public summary was returned.')}</p>${c.website && /^https?:\/\//i.test(c.website) ? `<a class="text-link" href="${esc(c.website)}" target="_blank" rel="noopener noreferrer">Website ↗</a>` : ''}</article>`).join('')}</div>`
       : '<p class="muted">No competitors could be verified in the returned results. Review the source list or retry.</p>';
-    root.innerHTML = `<div class="business-report-head"><div><h2>${esc(report.company || criteria.company || criteria.sector || 'Business overview')}</h2><p class="muted">${esc(report.sector || criteria.sector || 'Industry research')}${(report.geography || criteria.geography) ? ' · ' + esc(report.geography || criteria.geography) : ''}</p></div><span class="muted report-timestamp">${savedAt ? `Updated ${esc(savedAt)}` : ''}</span></div><section class="panel insight-panel"><h2>Business overview</h2><p>${esc(overview || 'No verified overview was returned. Use the source links below to validate company details, or retry research.')}</p>${report.business_model ? `<p><strong>Business model:</strong> ${esc(report.business_model)}</p>` : ''}${report.market_position ? `<p><strong>Market position:</strong> ${esc(report.market_position)}</p>` : ''}</section>${listPanel('Market trends', array(report.current_trends))}<section class="panel insight-panel"><h2>Competitive landscape</h2>${competitorBody}</section>${qlooCulturePanel(cultural)}${listPanel('Customer and product signals', array(report.customer_and_product_signals))}${listPanel('Growth opportunities', array(report.growth_opportunities))}${listPanel('Business risks', array(report.business_risks))}${listPanel('Recommended actions', array(report.recommended_actions))}${listPanel('Metrics to monitor', array(report.key_metrics_to_watch))}${sourcePanel(report.sources)}<p class="muted report-timestamp">Research completed ${esc(savedAt || '')}. Verify material claims with the linked sources before relying on them.</p>`;
+    const companyName = report.company || criteria.company || criteria.sector || 'Business overview';
+    const sector = report.sector || criteria.sector || '';
+    const geography = report.geography || criteria.geography || '';
+    const companyContext = [sector, geography].filter(Boolean).join(' · ');
+    root.innerHTML = `<header class="business-report-head"><div class="business-report-identity"><h2>${esc(companyName)}</h2>${companyContext ? `<p class="muted business-report-subtitle">${esc(companyContext)}</p>` : ''}</div>${savedAt ? `<div class="business-report-meta"><span class="muted report-timestamp">Updated ${esc(savedAt)}</span></div>` : ''}</header><section class="panel insight-panel"><h2>Business overview</h2><p>${esc(overview || 'No verified overview was returned. Use the source links below to validate company details, or retry research.')}</p>${report.business_model ? `<p><strong>Business model:</strong> ${esc(report.business_model)}</p>` : ''}${report.market_position ? `<p><strong>Market position:</strong> ${esc(report.market_position)}</p>` : ''}</section>${listPanel('Market trends', array(report.current_trends))}<section class="panel insight-panel"><h2>Competitive landscape</h2>${competitorBody}</section>${qlooCulturePanel(cultural)}${listPanel('Customer and product signals', array(report.customer_and_product_signals))}${listPanel('Growth opportunities', array(report.growth_opportunities))}${listPanel('Business risks', array(report.business_risks))}${listPanel('Recommended actions', array(report.recommended_actions))}${listPanel('Metrics to monitor', array(report.key_metrics_to_watch))}${sourcePanel(report.sources)}`;
   }
   async function research(criteria, contextId = '') {
     if (!criteria.company) {

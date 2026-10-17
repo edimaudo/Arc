@@ -11,7 +11,7 @@
   </form>
 </section>
 <section class="wrap discovery-results" id="discovery-results" hidden>
-  <div class="panel-head"><h2 id="results-heading">Top 5 aligned companies</h2><span class="muted" id="results-count"></span></div>
+  <div class="panel-head"><h2 id="results-heading">Top 5 aligned companies</h2></div>
   <div class="candidate-list" id="candidate-list"></div>
 </section>
 {% endblock %}
@@ -24,7 +24,6 @@
   const button = document.getElementById('refresh-shortlist');
   const results = document.getElementById('discovery-results');
   const list = document.getElementById('candidate-list');
-  const count = document.getElementById('results-count');
   const companyContext = new Map();
   let sourceContextId = '';
   const esc = v => String(v ?? '').replace(/\bqloo\b/gi, 'cultural data source').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -94,7 +93,6 @@
   }
   function showResults(companies, criteria) {
     companies = array(companies).slice(0,5);
-    count.textContent = `${companies.length} ${companies.length === 1 ? 'company' : 'companies'}`;
     if (!companies.length) {
       list.innerHTML = '<div class="empty-state"><h3>No aligned companies found</h3><p class="muted">Try another saved company or geography.</p></div>';
       return;
@@ -122,7 +120,7 @@
     }
     const criteria = {reference_company:selected.name, sector:selected.sector || '', geography:geography.value};
     results.hidden = false;
-    button.disabled = true; button.setAttribute('aria-busy','true'); button.classList.add('is-loading'); button.textContent = 'Getting results…'; count.textContent = '';
+    button.disabled = true; button.setAttribute('aria-busy','true'); button.classList.add('is-loading'); button.textContent = 'Getting results…';
     list.innerHTML = '<div class="empty-state"><h3>Getting results</h3><p class="muted">Finding five companies with comparable scale, industry, and cultural and audience signals.</p></div>';
     try {
       const response = await fetch('/discovery/api/comparables', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(criteria)});

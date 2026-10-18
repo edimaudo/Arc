@@ -729,7 +729,33 @@ class ArcAgent:
         output = interaction.get("output_text") or self._extract_output_text(interaction)
         parsed = self._parse_json_object(output)
         if not parsed:
-            raise RuntimeError("Grounded company research returned no valid structured result.")
+            # Occasionally the model follows the research instructions but returns
+            # prose or fenced JSON. Ask it to repair that response once before failing.
+            # This is only a recovery path; normal successful searches make one request.
+            interaction_id = interaction.get("id")
+            if interaction_id:
+                repair_payload = {
+                    "model": self.model,
+                    "previous_interaction_id": interaction_id,
+                    "input": (
+                        "Your previous response could not be parsed as JSON. Return only one valid JSON object, "
+                        "with no Markdown fences or text before or after it. Preserve the requested schema, keep "
+                        "all factual claims grounded, use empty arrays or null for unavailable evidence, and do not invent sources."
+                    ),
+                    "tools": [],
+                    "generation_config": {
+                        "max_output_tokens": GEMINI_MAX_OUTPUT_TOKENS,
+                        "thinking_level": GEMINI_THINKING_LEVEL,
+                    },
+                }
+                repaired = await self._post_interaction(repair_payload)
+                if repaired.get("status") == "failed":
+                    raise RuntimeError(self._interaction_error(repaired))
+                repaired_output = repaired.get("output_text") or self._extract_output_text(repaired)
+                repaired_data = self._parse_json_object(repaired_output)
+                if repaired_data:
+                    return {"data": repaired_data, "steps": self._built_in_activity(interaction) + self._built_in_activity(repaired)}
+            raise RuntimeError("Grounded company research returned no valid structured result after one format-recovery attempt.")
         return {"data": parsed, "steps": self._built_in_activity(interaction)}
 
     async def search_company_information(self, args: dict[str, Any]) -> dict[str, Any]:

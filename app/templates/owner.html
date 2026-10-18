@@ -29,16 +29,20 @@
     if (!Number.isFinite(n)) return text.replace(/\b(-?\d+(?:\.\d+)?)\s*\/\s*100\b/g, '$1%').replace(/\s+affinity\s*$/i, '');
     return `${Math.round(n >= 0 && n <= 1 ? n * 100 : n)}%`;
   };
-  function textItem(item) { return typeof item === 'string' ? item : (item?.detail || item?.summary || item?.description || item?.body || item?.rationale || item?.impact || item?.next_step || ''); }
-  function normalizedText(value) { return String(value || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase(); }
+  function textItem(item) { return typeof item === 'string' ? item : (item?.detail || item?.summary || item?.description || item?.rationale || item?.reason || item?.action || ''); }
   function listPanel(title, values) {
     const body = values.length
       ? `<div class="insight-list">${values.map(v => {
           if (typeof v === 'string') return `<p>${esc(v)}</p>`;
-          const heading = v.title || v.name || v.priority || v.action || v.metric || 'Observation';
-          const detail = textItem(v);
-          const reason = v.reason && normalizedText(v.reason) !== normalizedText(heading) && normalizedText(v.reason) !== normalizedText(detail) ? v.reason : '';
-          return `<article><h3>${esc(heading)}</h3>${detail && normalizedText(detail) !== normalizedText(heading) ? `<p>${esc(detail)}</p>` : ''}${reason ? `<p class="muted">${esc(reason)}</p>` : ''}${v.website && /^https?:\/\//i.test(v.website) ? `<a class="text-link" href="${esc(v.website)}" target="_blank" rel="noopener noreferrer">Website ↗</a>` : ''}</article>`;
+          const heading = String(v.title || v.name || v.priority || v.action || v.metric || 'Observation').trim();
+          const normalize = value => String(value ?? '').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+          const candidates = [v.detail, v.summary, v.description, v.rationale, v.reason, v.action]
+            .filter(value => typeof value === 'string' && value.trim())
+            .map(value => value.trim())
+            .filter((value, index, all) => normalize(value) !== normalize(heading) && all.findIndex(other => normalize(other) === normalize(value)) === index);
+          const detail = candidates[0] || 'No supporting detail was returned.';
+          const extra = candidates.slice(1).find(value => normalize(value) !== normalize(detail));
+          return `<article><h3>${esc(heading)}</h3><p>${esc(detail)}</p>${extra ? `<p class="muted">${esc(extra)}</p>` : ''}${v.website && /^https?:\/\//i.test(v.website) ? `<a class="text-link" href="${esc(v.website)}" target="_blank" rel="noopener noreferrer">Website ↗</a>` : ''}</article>`;
         }).join('')}</div>`
       : '<p class="muted">No verified findings were returned for this section. Review the linked sources or run the research again.</p>';
     return `<section class="panel insight-panel"><h2>${title}</h2>${body}</section>`;
@@ -80,11 +84,26 @@
     const competitorBody = competitors.length
       ? `<div class="insight-list">${competitors.map(c => `<article><h3>${esc(c.name || 'Competitor')}</h3><p>${esc(c.summary || c.detail || 'No public summary was returned.')}</p>${c.website && /^https?:\/\//i.test(c.website) ? `<a class="text-link" href="${esc(c.website)}" target="_blank" rel="noopener noreferrer">Website ↗</a>` : ''}</article>`).join('')}</div>`
       : '<p class="muted">No competitors could be verified in the returned results. Review the source list or retry.</p>';
-    const companyName = report.company || criteria.company || criteria.sector || 'Business overview';
-    const sector = report.sector || criteria.sector || '';
-    const geography = report.geography || criteria.geography || '';
-    const companyContext = [sector, geography].filter(Boolean).join(' · ');
-    root.innerHTML = `<header class="business-report-head"><div class="business-report-identity"><h2>${esc(companyName)}</h2>${companyContext ? `<p class="muted business-report-subtitle">${esc(companyContext)}</p>` : ''}</div>${savedAt ? `<div class="business-report-meta"><span class="muted report-timestamp">Updated ${esc(savedAt)}</span></div>` : ''}</header><section class="panel insight-panel"><h2>Business overview</h2><p>${esc(overview || 'No verified overview was returned. Use the source links below to validate company details, or retry research.')}</p>${report.business_model ? `<p><strong>Business model:</strong> ${esc(report.business_model)}</p>` : ''}${report.market_position ? `<p><strong>Market position:</strong> ${esc(report.market_position)}</p>` : ''}</section>${listPanel('Market trends', array(report.current_trends))}<section class="panel insight-panel"><h2>Competitive landscape</h2>${competitorBody}</section>${qlooCulturePanel(cultural)}${listPanel('Customer and product signals', array(report.customer_and_product_signals))}${listPanel('Growth opportunities', array(report.growth_opportunities))}${listPanel('Business risks', array(report.business_risks))}${listPanel('Recommended actions', array(report.recommended_actions))}${listPanel('Metrics to monitor', array(report.key_metrics_to_watch))}${sourcePanel(report.sources)}`;
+    const companyName = report.company || criteria.company || 'Business overview';
+    const rawSector = String(report.sector || '').trim();
+    // Provider output occasionally combines sector, geography, operating reach and headquarters.
+    // Split it into a short primary line plus a separate, wrapping detail line instead of squeezing it beside the title.
+    const sectorParts = rawSector.split(/\s+[·|]\s+/).map(value => value.trim()).filter(Boolean);
+    const sectorLabel = sectorParts.shift() || '';
+    const normalizeGeo = raw => {
+      const value = String(raw || '').trim();
+      if (!value) return {label:'', detail:''};
+      const match = value.match(/^(.+?)\s*\((.+)\)$/);
+      if (match && /operating in|headquarters|based in|countries|region|markets/i.test(match[2])) return {label:match[1].trim(), detail:match[2].trim()};
+      return {label:value, detail:''};
+    };
+    const sectorGeography = normalizeGeo(sectorParts.join(' · '));
+    const reportedGeography = normalizeGeo(report.geography);
+    const geographyLabel = reportedGeography.label || sectorGeography.label;
+    const metaParts = [sectorLabel, geographyLabel].filter((value, index, all) => value && all.findIndex(other => other.toLocaleLowerCase() === value.toLocaleLowerCase()) === index);
+    const metaDetails = [sectorGeography.detail, reportedGeography.detail]
+      .filter((value, index, all) => value && all.findIndex(other => other.toLocaleLowerCase() === value.toLocaleLowerCase()) === index);
+    root.innerHTML = `<div class="business-report-head"><div class="business-report-title"><h2>${esc(companyName)}</h2></div><span class="muted report-timestamp">${savedAt ? `Updated ${esc(savedAt)}` : ''}</span><div class="business-report-meta"><div class="business-report-meta-main">${metaParts.map((value, index) => `${index ? '<span class="meta-separator" aria-hidden="true">·</span>' : ''}<span>${esc(value)}</span>`).join('')}</div>${metaDetails.length ? `<p class="business-report-meta-detail">${metaDetails.map(esc).join(' · ')}</p>` : ''}</div></div><section class="panel insight-panel"><h2>Business overview</h2><p>${esc(overview || 'No verified overview was returned. Use the source links below to validate company details, or retry research.')}</p>${report.business_model ? `<p><strong>Business model:</strong> ${esc(report.business_model)}</p>` : ''}${report.market_position ? `<p><strong>Market position:</strong> ${esc(report.market_position)}</p>` : ''}</section>${listPanel('Market trends', array(report.current_trends))}<section class="panel insight-panel"><h2>Competitive landscape</h2>${competitorBody}</section>${qlooCulturePanel(cultural)}${listPanel('Customer and product signals', array(report.customer_and_product_signals))}${listPanel('Growth opportunities', array(report.growth_opportunities))}${listPanel('Business risks', array(report.business_risks))}${listPanel('Recommended actions', array(report.recommended_actions))}${listPanel('Metrics to monitor', array(report.key_metrics_to_watch))}${sourcePanel(report.sources)}`;
   }
   async function research(criteria, contextId = '') {
     if (!criteria.company) {

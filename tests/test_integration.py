@@ -133,6 +133,27 @@ class IntegrationTests(unittest.TestCase):
         finally:
             dashboard._agent = original
 
+    def test_discovery_unclassified_provider_error_has_reference_id_and_safe_message(self):
+        class RejectedRequestDiscovery:
+            async def find_comparable_companies(self, args):
+                raise RuntimeError('Gemini API request failed (400): invalid request payload')
+        original = discovery._agent
+        discovery._agent = RejectedRequestDiscovery()
+        try:
+            response = self.client.post(
+                '/discovery/api/comparables',
+                json={'reference_company': 'Example Co', 'geography': 'North America'},
+                headers={'X-Arc-Request-ID': 'DISC-TEST123'},
+            )
+            self.assertEqual(response.status_code, 503)
+            body = response.json()
+            self.assertEqual(body['error_code'], 'provider_rejected_request')
+            self.assertEqual(body['reference_id'], 'DISC-TEST123')
+            self.assertIn('model or API configuration', body['error'])
+            self.assertNotIn('API key, model setting, and quota', body['error'])
+        finally:
+            discovery._agent = original
+
     def test_discovery_shows_actionable_provider_error(self):
         class UnavailableDiscovery:
             async def find_comparable_companies(self, args):

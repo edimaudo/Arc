@@ -457,12 +457,34 @@ input, select, textarea { border-radius: 3px; min-height: 46px; }
 /* Business research and independent comparable-company discovery */
 .business-research-panel { margin-bottom: 26px; }
 .business-results { display: grid; gap: 18px; margin-bottom: 80px; }
-.business-report-head { display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: start; gap: 24px; padding: 10px 0 14px; }
-.business-report-identity { min-width: 0; }
-.business-report-head h2 { font-size: 1.55rem; line-height: 1.2; overflow-wrap: anywhere; margin: 0 0 7px; }
-.business-report-subtitle { margin: 0; max-width: 82ch; line-height: 1.55; overflow-wrap: anywhere; white-space: normal; }
-.business-report-meta { align-self: start; max-width: 100%; padding-top: 3px; }
-.business-report-meta .report-timestamp { display: block; white-space: nowrap; text-align: right; }
+.business-report-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "title timestamp" "meta meta";
+  align-items: start;
+  gap: 8px 24px;
+  padding: 10px 0 14px;
+  min-width: 0;
+}
+.business-report-title { grid-area: title; min-width: 0; }
+.business-report-head h2 { font-size: 1.55rem; line-height: 1.22; margin: 0; overflow-wrap: anywhere; }
+.business-report-meta {
+  grid-area: meta;
+  display: grid;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: .91rem;
+  line-height: 1.55;
+}
+.business-report-meta-main { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 9px; min-width: 0; }
+.business-report-meta-main > span { min-width: 0; overflow-wrap: anywhere; }
+.business-report-meta .meta-separator { opacity: .72; }
+.business-report-meta-detail { margin: 0; max-width: 90ch; min-width: 0; overflow-wrap: anywhere; line-height: 1.55; }
+.business-report-head .report-timestamp { grid-area: timestamp; align-self: start; justify-self: end; max-width: 100%; white-space: nowrap; margin: 2px 0 0; text-align: right; }
+
 .insight-panel h2 { margin-bottom: 18px; }
 .insight-panel > p + p { margin-top: 12px; }
 .insight-list { display: grid; }
@@ -502,8 +524,8 @@ input, select, textarea { border-radius: 3px; min-height: 46px; }
 #arc-tour::backdrop { background: rgba(10,12,10,.56); backdrop-filter: blur(2px); }
 @media (max-width: 760px) {
   .comparable-facts { grid-template-columns: 1fr; }
-  .business-report-head { grid-template-columns: minmax(0, 1fr); gap: 8px; }
-  .business-report-meta .report-timestamp { white-space: normal; text-align: left; }
+  .business-report-head { grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "timestamp" "meta"; gap: 7px; }
+  .business-report-head .report-timestamp { justify-self: start; white-space: normal; text-align: left; margin: 0; }
   .tour-controls { grid-template-columns: max-content minmax(0, 1fr); gap: 8px; }
   .tour-controls .button { min-height: 42px; padding-left: 9px; padding-right: 9px; font-size: .82rem; }
   .tour-controls .hero-actions { gap: 6px; }

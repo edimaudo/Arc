@@ -122,15 +122,33 @@
     results.hidden = false;
     button.disabled = true; button.setAttribute('aria-busy','true'); button.classList.add('is-loading'); button.textContent = 'Getting results…';
     list.innerHTML = '<div class="empty-state"><h3>Getting results</h3><p class="muted">Finding five companies with comparable scale, industry, and cultural and audience signals.</p></div>';
+    const requestId = window.crypto?.randomUUID ? `DISC-${window.crypto.randomUUID()}` : `DISC-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;
     try {
-      const response = await fetch('/discovery/api/comparables', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(criteria)});
-      const data = await response.json().catch(()=>({}));
-      if (!response.ok) throw new Error(data.detail || data.error || 'Discovery could not return results. Check provider availability and retry.');
+      const response = await fetch('/discovery/api/comparables', {method:'POST',headers:{'Content-Type':'application/json','X-Arc-Request-ID':requestId},body:JSON.stringify(criteria)});
+      const responseText = await response.text();
+      let data = {};
+      try { data = responseText ? JSON.parse(responseText) : {}; } catch (_) { data = {}; }
+      if (!response.ok) {
+        if (data.error || data.detail) throw new Error(data.error || data.detail);
+        if (response.status === 401 || response.status === 403) throw new Error('Arc could not verify this session. Please sign in again and retry. Reference ID: ' + requestId + '.');
+        if (response.status === 404) throw new Error('The Discovery service was not found in this deployment. Refresh the app and try again; if it continues, the app administrator should check the latest Vercel deployment. Reference ID: ' + requestId + '.');
+        if (response.status === 429) throw new Error('Arc is receiving too many searches right now. Please wait briefly and try again. Reference ID: ' + requestId + '.');
+        if (response.status === 504) throw new Error('This search took longer than the deployment allowed and timed out. Your selected company is preserved. Please retry. If it keeps happening, the app administrator should review the Vercel function duration and provider response time. Reference ID: ' + requestId + '.');
+        if (response.status >= 500) throw new Error('Arc encountered a temporary server error while searching. Your selected company is preserved. Please retry. If it continues, the app administrator should check Vercel Function Logs. Reference ID: ' + requestId + '.');
+        throw new Error('Arc could not process this search (HTTP ' + response.status + '). Your selected company is preserved. Please retry; if it continues, share reference ID ' + requestId + ' with the app administrator.');
+      }
+      if (!data || typeof data !== 'object' || !Array.isArray(data.comparables)) throw new Error('The research service returned an incomplete result that Arc could not safely display. Your selected company is preserved. Please retry. Reference ID: ' + requestId + '.');
       const result = {id:'discovery-' + Date.now(),created_at:new Date().toISOString(),source_context_id:sourceContextId || selected.sourceContextId || null,criteria,comparables:array(data.comparables).slice(0,5)};
       await ArcStore.putDiscovery(result);
       showResults(result.comparables,criteria);
     } catch(error) {
-      const message = /fetch|network|load failed/i.test(error.message || '') ? 'Arc could not reach the research service. Your selected company is still here; try again in a moment.' : (error.message || 'Arc could not find comparable companies.');
+      const rawMessage = String(error?.message || '');
+      let message = rawMessage;
+      if (/failed to fetch|networkerror|network request failed|load failed/i.test(rawMessage)) {
+        message = 'Arc could not reach the search service. Your selected company is preserved. Check your connection and try again. If this keeps happening, the app administrator should check Vercel deployment status and Function Logs. Reference ID: ' + requestId + '.';
+      } else if (!rawMessage) {
+        message = 'Arc could not complete the search. Your selected company is preserved. Please retry. Reference ID: ' + requestId + '.';
+      }
       list.innerHTML = `<div class="empty-state"><h3>Discovery is temporarily unavailable</h3><p class="muted">${esc(message)}</p><button class="button secondary" type="button" data-retry-discovery>Try again</button></div>`;
       list.querySelector('[data-retry-discovery]')?.addEventListener('click',()=>form.requestSubmit());
     } finally {

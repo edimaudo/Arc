@@ -1,13 +1,13 @@
 # Arc — Acquisition Business Intelligence
 
 Looking to acquire a new business or see what businesses align too your values? Arc is the tool for you. 
-It combines business insights with cultural intelligence.  It achieves this by leveraging Qloo cultural intelligence and an AI analyst layer.
+It combines business insights with cultural intelligence.  It achieves this by leveraging Qloo cultural intelligence and an analyst layer.
 
 It Analyzes information through these lenses
 
-- Analyst: investigation controls, evidence, findings, source/evidence drill-down, agent activity.
+- Acquisition Analysis: investigation controls, evidence, findings, source/evidence drill-down, cultural insights.
 - Business Insights: executive overview, risk/synergy summary, potential company targets and fit scores.
-- Company discovery: candidate companies ranked on Strategic Fit, Cultural Fit, Audience Expansion, Financial Fit, Risk, and Overall Fit.
+- Company discovery: Top 5 companies similar to the company aligned to what you are looking for. candidate companies ranked on Strategic Fit, Cultural Fit, Audience Expansion, Financial Fit, Risk, and Overall Fit.
 
 ## Architecture
 - Backend: FastAPI
@@ -20,15 +20,6 @@ Default demo credentials:
 - Email: `demo@arc.app`
 - Password: `ArcDemo2026!`
 
-## Run
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
-
-Open http://127.0.0.1:8000
 
 ## Environment
 Create `.env` with:
@@ -37,4 +28,11 @@ Create `.env` with:
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL=gemini-3.5-flash`
 
-
+## Run
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
+Open http://127.0.0.1:8000

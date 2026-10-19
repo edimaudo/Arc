@@ -50,6 +50,18 @@ def test_signin_is_a_normal_email_and_password_form():
         assert dashboard.status_code == 200
         assert 'Dashboard' in dashboard.text
 
+        # Even a direct/previous deep link must land on the dashboard after login.
+        deep_link_login = client.get('/login?next=%2Fowner')
+        assert deep_link_login.status_code == 303
+        assert deep_link_login.headers['location'] == '/dashboard'
+
+
+def test_demo_login_always_redirects_to_dashboard_even_with_next_path():
+    with TestClient(app, follow_redirects=False) as client:
+        signed_in = client.post('/demo-login', data={'next': '/owner'})
+        assert signed_in.status_code == 303
+        assert signed_in.headers['location'] == '/dashboard'
+
 
 def test_protected_analysis_redirects_to_signin_with_return_path():
     with TestClient(app, follow_redirects=False) as client:

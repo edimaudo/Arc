@@ -10,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import APP_NAME, APP_ENV, BASE_DIR, SESSION_SECRET
-from app.auth import authenticate_user, clear_user_session, safe_next_path, set_user_session, DEMO_EMAIL, DEMO_PASSWORD, DEMO_USER_ID
+from app.auth import authenticate_user, clear_user_session, set_user_session, DEMO_EMAIL, DEMO_PASSWORD, DEMO_USER_ID
 
 logger = logging.getLogger(__name__)
 # A deterministic demo-only fallback prevents sign-in cookies breaking across Vercel
@@ -44,10 +44,11 @@ async def landing(request: Request):
 
 @app.get('/login', name='login')
 async def login_page(request: Request, next: str = '/dashboard'):
+    # Arc always opens on the Dashboard after sign-in; ignore deep-link return paths.
     if request.session.get('user_id') == DEMO_USER_ID:
-        return RedirectResponse(safe_next_path(next), status_code=303)
+        return RedirectResponse('/dashboard', status_code=303)
     return templates.TemplateResponse(request, 'auth.html', {
-        'request': request, 'mode': 'Sign in', 'next_url': safe_next_path(next), 'error': None,
+        'request': request, 'mode': 'Sign in', 'next_url': '/dashboard', 'error': None,
         'demo_email': DEMO_EMAIL, 'demo_password': DEMO_PASSWORD,
     })
 
@@ -62,12 +63,12 @@ async def login_submit(
     user = authenticate_user(email, password)
     if not user:
         return templates.TemplateResponse(request, 'auth.html', {
-            'request': request, 'mode': 'Sign in', 'next_url': safe_next_path(next),
+            'request': request, 'mode': 'Sign in', 'next_url': '/dashboard',
             'error': 'Email or password is incorrect.',
             'demo_email': DEMO_EMAIL, 'demo_password': DEMO_PASSWORD,
         }, status_code=401)
     set_user_session(request, user)
-    return RedirectResponse(safe_next_path(next), status_code=303)
+    return RedirectResponse('/dashboard', status_code=303)
 
 
 @app.post('/demo-login', name='demo_login')
@@ -75,12 +76,12 @@ async def demo_login(request: Request, next: str = Form('/dashboard')):
     user = authenticate_user(DEMO_EMAIL, DEMO_PASSWORD)
     if not user:
         return templates.TemplateResponse(request, 'auth.html', {
-            'request': request, 'mode': 'Sign in', 'next_url': safe_next_path(next),
+            'request': request, 'mode': 'Sign in', 'next_url': '/dashboard',
             'error': 'The demo account credentials are not configured correctly.',
             'demo_email': DEMO_EMAIL, 'demo_password': DEMO_PASSWORD,
         }, status_code=503)
     set_user_session(request, user)
-    return RedirectResponse(safe_next_path(next), status_code=303)
+    return RedirectResponse('/dashboard', status_code=303)
 
 
 @app.get('/signup', name='signup')

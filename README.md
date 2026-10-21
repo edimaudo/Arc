@@ -13,7 +13,7 @@ It Analyzes information through these lenses
 - Backend: FastAPI
 - Frontend: Jinja2 + vanilla JavaScript + CSS
 - Cultural intelligence: Qloo APIs (`/search`, `/v2/insights`, analysis/compare, trends)
-- AI: Gemini Flash
+- AI: Gemini 3.6 Flash
 
 ## Login
 Default demo credentials:
@@ -26,7 +26,7 @@ Create `.env` with:
 - `QLOO_API_KEY`
 - `QLOO_BASE_URL=https://hackathon.api.qloo.com`
 - `GEMINI_API_KEY`
-- `GEMINI_MODEL=gemini-3.5-flash`
+- `GEMINI_MODEL=gemini-3.6-flash`
 
 ## Run
 ```bash

@@ -253,11 +253,11 @@ def test_acquisition_score_cards_are_compact_and_takeaway_includes_cultural_cont
     css = (root / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
     agent = (root / 'services' / 'agent_service.py').read_text(encoding='utf-8')
     report_service = (root / 'services' / 'report_service.py').read_text(encoding='utf-8')
-    assert "metric('Strategic fit',ov.strategic_fit,'Products, markets and capabilities')" in analysis
+    assert "metric('Strategic fit',ov.strategic_fit,'Products, markets and capabilities',scoreDetails.strategic_fit)" in analysis
     assert "metric('Cultural categories'" in analysis
-    assert "metric('Audience expansion',ov.audience_expansion,'Potential new audiences')" in analysis
-    assert "metric('Financial fit',ov.financial_fit,'Reported financial indicators')" in analysis
-    assert "metric('Integration fit',integrationFitValue(ov),'People, brand and systems')" in analysis
+    assert "metric('Audience expansion',ov.audience_expansion,'Potential new audiences',scoreDetails.audience_expansion)" in analysis
+    assert "metric('Financial fit',ov.financial_fit,'Reported financial indicators',scoreDetails.financial_fit)" in analysis
+    assert "metric('Integration fit',integrationFitValue(ov),'People, brand and systems',scoreDetails.integration_fit)" in analysis
     assert "if (risk === 'Low') return 'Favorable'" in analysis
     assert "if (risk === 'High' || risk === 'Critical') return 'Challenging'" in analysis
     assert 'metric-card-summary .metric-value' in css
@@ -320,3 +320,23 @@ def test_financial_render_uses_readable_values_for_nested_objects():
     assert "esc(financialMetric(fin[k], k))" in source
     assert "esc(financialText(fin.assessment))" in source
     assert "esc(fin[k] ?? '—')" not in source
+
+
+def test_acquisition_form_keeps_primary_objective_and_always_includes_all_assessment_areas():
+    with TestClient(app, follow_redirects=False) as client:
+        client.post('/demo-login', data={'next': '/dashboard'})
+        html = client.get('/analysis/new').text
+        # Simulate a stale browser submitting the old partial-scope fields. The server must ignore them.
+        created = client.post('/analysis/start', data={
+            'acquirer': 'Example Buyer',
+            'target': 'Example Target',
+            'objective': 'Cultural and audience due diligence',
+            'scopes': ['financial'],
+        })
+    assert 'Primary objective' in html
+    assert 'using your objective to guide emphasis' in html
+    assert 'Investigation scope' not in html
+    assert 'name="scopes"' not in html
+    assert created.status_code == 200
+    assert created.json()['analysis']['objective'] == 'Cultural and audience due diligence'
+    assert created.json()['analysis']['scopes'] == ['financial', 'business', 'cultural', 'integration']

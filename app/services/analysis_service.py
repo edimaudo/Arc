@@ -8,12 +8,14 @@ from typing import Any
 from app.config import MAX_TOOL_TURNS
 from app.services.agent_service import ArcAgent
 from app.services.api_errors import friendly_api_error
+from app.services.scoring_service import build_assessment_scores
 
 _AGENT = ArcAgent()
 logger = logging.getLogger(__name__)
+FULL_ANALYSIS_SCOPES = ['financial', 'business', 'cultural', 'integration']
 
 
-def create_analysis(acquirer: str, target: str, objective: str, scopes: list[str], owner_id: str | None = None) -> dict[str, Any]:
+def create_analysis(acquirer: str, target: str, objective: str, scopes: list[str] | None = None, owner_id: str | None = None) -> dict[str, Any]:
     """Create an analysis payload. The browser persists it in IndexedDB."""
     now = datetime.now(timezone.utc).isoformat()
     return {
@@ -27,6 +29,7 @@ def create_analysis(acquirer: str, target: str, objective: str, scopes: list[str
             'cultural_alignment': None,
             'audience_expansion': None,
             'financial_fit': None,
+            'integration_fit': None,
             'integration_risk': 'Pending',
         },
         'findings': [],
@@ -41,7 +44,9 @@ def create_analysis(acquirer: str, target: str, objective: str, scopes: list[str
         'business': {},
         'activity': [],
         'objective': objective,
-        'scopes': scopes,
+        # Kept in the stored payload for compatibility with existing IndexedDB records;
+        # the selectable scope control is removed and all assessment areas are always run.
+        'scopes': FULL_ANALYSIS_SCOPES.copy(),
         'documents': [],
         'report': None,
         'created_at': now,
@@ -57,11 +62,13 @@ async def run_investigation(source: dict[str, Any]) -> dict[str, Any]:
         raise ValueError('The saved analysis is missing its ID, acquirer, or target. Reopen it from this browser and try again.')
     analysis['status'] = 'Investigation in progress'
     analysis['updated_at'] = datetime.now(timezone.utc).isoformat()
+    # Normalize historical browser records that may have been created with only a subset.
+    analysis['scopes'] = FULL_ANALYSIS_SCOPES.copy()
     goal = {
         'acquirer': analysis['acquirer'],
         'target': analysis['target'],
         'objective': analysis.get('objective', 'Full acquisition investigation'),
-        'scopes': analysis.get('scopes', ['financial', 'business', 'cultural', 'integration']),
+        'scopes': FULL_ANALYSIS_SCOPES.copy(),
         'documents': analysis.get('documents', []),
     }
     try:
@@ -91,15 +98,21 @@ async def run_investigation(source: dict[str, Any]) -> dict[str, Any]:
     analysis['opportunities'] = result.get('opportunities', analysis.get('opportunities', []))
     analysis['diligence_questions'] = result.get('diligence_questions', analysis.get('diligence_questions', []))
 
-    scores = result.get('scores', {}) or {}
+    scores = result.get('scores', {}) if isinstance(result.get('scores'), dict) else {}
+    normalized_scores, score_details, financial = build_assessment_scores(result, analysis.get('documents', []))
+    raw_integration_risk = scores.get('integration_risk', 'Pending')
+    if isinstance(raw_integration_risk, dict):
+        raw_integration_risk = next((raw_integration_risk.get(key) for key in ('risk', 'level', 'rating', 'assessment', 'status', 'label') if raw_integration_risk.get(key) not in (None, '')), 'Pending')
     score_map = {
-        'strategic_fit': scores.get('strategic_fit'),
-        'cultural_alignment': scores.get('cultural_alignment', scores.get('cultural_fit')),
-        'audience_expansion': scores.get('audience_expansion'),
-        'financial_fit': scores.get('financial_fit'),
-        'integration_risk': scores.get('integration_risk', 'Pending'),
+        'strategic_fit': normalized_scores.get('strategic_fit'),
+        'cultural_alignment': normalized_scores.get('cultural_alignment'),
+        'audience_expansion': normalized_scores.get('audience_expansion'),
+        'financial_fit': normalized_scores.get('financial_fit'),
+        'integration_fit': normalized_scores.get('integration_fit'),
+        'integration_risk': raw_integration_risk,
     }
     analysis.setdefault('overview', {}).update(score_map)
+    analysis['score_details'] = score_details
     analysis['report'] = result.get('report') or {
         'executive_summary': result.get('summary') or result.get('output', ''),
         'deal_fit': {k: v for k, v in score_map.items() if v is not None},
@@ -108,7 +121,14 @@ async def run_investigation(source: dict[str, Any]) -> dict[str, Any]:
         'next_steps': analysis.get('diligence_questions', []),
         'disclaimer': 'AI-generated decision support; validate material findings through conventional diligence.'
     }
-    analysis['financial'] = result.get('financial', {})
+    analysis['report'].setdefault('deal_fit', {})
+    if isinstance(analysis['report']['deal_fit'], dict):
+        for key in ('strategic_fit', 'audience_expansion', 'financial_fit', 'integration_fit', 'cultural_alignment'):
+            if score_map.get(key) is not None:
+                analysis['report']['deal_fit'][key] = score_map[key]
+    analysis['report']['score_details'] = score_details
+    analysis['report'].setdefault('score_methodology', 'Scores use a 0–100 directional rubric. Where evidence is limited, confidence is marked low; neutral fallbacks are not probabilities or proof of fit. Missing financial metrics are excluded rather than treated as zero.')
+    analysis['financial'] = financial
     analysis['business'] = result.get('business', {})
     analysis['cultural'] = result.get('cultural', analysis.get('cultural', {}))
     analysis['qloo_evidence'] = result.get('qloo_evidence', {})
@@ -116,6 +136,7 @@ async def run_investigation(source: dict[str, Any]) -> dict[str, Any]:
     if result.get('limited_mode'):
         analysis['service_notice'] = result.get('service_notice', 'Live research is temporarily unavailable.')
         analysis.setdefault('overview', {})['integration_risk'] = 'Not assessed'
+        analysis.setdefault('overview', {})['integration_fit'] = None
     else:
         analysis.pop('service_notice', None)
     return analysis

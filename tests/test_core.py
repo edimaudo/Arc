@@ -31,8 +31,14 @@ class StubAgent:
 
 
 class CoreTests(unittest.TestCase):
-    def test_financial_requires_evidence(self):
+    def test_financial_fit_uses_partial_verified_evidence(self):
         result = asyncio.run(ArcAgent().calculate_financial_fit({'metrics': {'ebitda_margin': 0.22}}))
+        self.assertEqual(result['financial_fit'], 73)
+        self.assertEqual(result['status'], 'partial')
+        self.assertEqual(result['coverage'], '1/4 metrics available')
+
+    def test_financial_fit_remains_unscored_without_any_metrics(self):
+        result = asyncio.run(ArcAgent().calculate_financial_fit({'metrics': {}}))
         self.assertIsNone(result['financial_fit'])
         self.assertEqual(result['status'], 'insufficient_evidence')
 

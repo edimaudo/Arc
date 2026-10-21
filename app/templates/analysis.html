@@ -31,8 +31,22 @@
   const items = (values, empty) => list(values).length ? `<ul class="evidence-list">${values.map(v => `<li>${esc(labelText(v))}</li>`).join('')}</ul>` : `<p class="muted">${esc(empty)}</p>`;
   const scoreNumber = value => {
     if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'object') {
+      for (const key of ['score','fit_score','overall_score','score_percent','percentage','percent','numeric_score','value','rating_value']) {
+        if (value[key] !== undefined && value[key] !== null && value[key] !== '') {
+          const parsed = scoreNumber(value[key]);
+          if (parsed !== null) return parsed;
+        }
+      }
+      for (const key of ['rating','level','assessment','label','status','summary']) {
+        const parsed = scoreNumber(value[key]);
+        if (parsed !== null) return parsed;
+      }
+      return null;
+    }
     if (typeof value === 'number') return value >= 0 && value <= 1 ? value * 100 : value;
     const text = String(value).trim();
+    if (/not assessed|insufficient evidence|unavailable|unknown|pending/i.test(text)) return null;
     const percentage = text.match(/(-?\d+(?:\.\d+)?)\s*%/);
     if (percentage) return Number(percentage[1]);
     const ratio = text.match(/(-?\d+(?:\.\d+)?)\s*\/\s*100(?:\s+affinity)?/i);
@@ -42,10 +56,19 @@
       const n = Number(standalone[1]);
       return n >= 0 && n <= 1 ? n * 100 : n;
     }
+    const lower = text.toLowerCase();
+    if (/excellent|very strong|strong fit|favorable|\bgood\b|\bpositive\b|high alignment/.test(lower)) return 80;
+    if (/moderate|medium|mixed|partial|balanced/.test(lower)) return 60;
+    if (/critical|severe|\bpoor\b|\bweak\b|unfavorable|incompatible/.test(lower)) return 25;
+    if (/high risk|challenging|limited|low fit|misaligned/.test(lower)) return 38;
     return null;
   };
   const compactRisk = value => {
     if (value === null || value === undefined || value === '') return 'Not assessed';
+    if (typeof value === 'object') {
+      value = value.risk ?? value.level ?? value.rating ?? value.assessment ?? value.status ?? value.label ?? value.summary ?? value.value ?? '';
+      if (typeof value === 'object') return 'Not assessed';
+    }
     const text = String(value);
     for (const level of ['Critical', 'High', 'Moderate', 'Medium', 'Low']) {
       if (new RegExp(`\\b${level}\\b`, 'i').test(text)) return level;
@@ -64,8 +87,8 @@
     if (risk === 'High' || risk === 'Critical') return 'Challenging';
     return 'Not assessed';
   };
-  const metric = (label, value, detail) => {
-    const scoreLabel = ['Strategic fit', 'Audience expansion', 'Financial fit'].includes(label);
+  const metric = (label, value, detail, scoreMeta = {}) => {
+    const scoreLabel = ['Strategic fit', 'Audience expansion', 'Financial fit', 'Integration fit'].includes(label);
     const score = scoreLabel ? scoreNumber(value) : null;
     let display;
     if (scoreLabel) display = score === null ? 'Not assessed' : `${Math.round(Math.max(0, Math.min(100, score)))}%`;
@@ -74,7 +97,9 @@
     const numeric = scoreLabel && score !== null;
     const barValue = numeric ? Math.max(0, Math.min(100, score)) : 0;
     const valueClass = numeric ? 'metric-value score-value' : 'metric-value text-value';
-    return `<article class="metric-card metric-card-summary"><span class="metric-label">${esc(label)}</span><strong class="${valueClass}">${esc(display)}</strong>${numeric ? `<div class="bar" aria-hidden="true"><i style="width:${barValue}%"></i></div>` : ''}<p class="metric-detail">${esc(detail || '')}</p></article>`;
+    const confidence = numeric && scoreMeta?.confidence ? ` · ${String(scoreMeta.confidence).replace(/^./, ch => ch.toUpperCase())} confidence` : '';
+    const rationale = scoreMeta?.rationale ? ` title="${esc(scoreMeta.rationale)}"` : '';
+    return `<article class="metric-card metric-card-summary"><span class="metric-label">${esc(label)}</span><strong class="${valueClass}"${rationale}>${esc(display)}</strong>${numeric ? `<div class="bar" aria-hidden="true"><i style="width:${barValue}%"></i></div>` : ''}<p class="metric-detail"${rationale}>${esc((detail || '') + confidence)}</p></article>`;
   };
   const displayDetail = item => typeof item === 'string' ? item : (item?.detail || item?.body || item?.summary || item?.reason || item?.implication || item?.description || item?.action || '');
   const financialText = value => {
@@ -163,9 +188,75 @@
     runButton.disabled = isRunning;
     runButton.setAttribute('aria-busy', isRunning ? 'true' : 'false');
     runButton.textContent = isRunning ? 'Getting results…' : (a.limited_mode ? 'Retry live research' : 'Retry analysis');
-    const ov = a.overview || {}, fin = a.financial || {}, biz = a.business || {}, cul = a.cultural || {}, risks = list((a.risks || {}).items);
+    const ov = { ...(a.overview || {}) }, fin = a.financial || {}, biz = a.business || {}, cul = a.cultural || {}, risks = list((a.risks || {}).items);
     const qlooSignals = cul.qloo_signals || {};
     const findings = list(a.findings), ops = list(a.opportunities), questions = list(a.diligence_questions), docs = list(a.documents);
+    const scoreDetails = { ...(a.report?.score_details || {}), ...(a.score_details || {}) };
+    const hasCompletedReport = !a.limited_mode && Boolean(a.report || findings.length || a.agent_output);
+    const textForScoring = values => values.map(v => typeof v === 'string' ? v : [v?.title, v?.body, v?.detail, v?.summary, v?.rationale, v?.assessment, v?.strategic_rationale, v?.executive_summary].filter(Boolean).join(' ')).join(' ').toLowerCase();
+    const markFallback = (key, rationale) => { if (!scoreDetails[key]) scoreDetails[key] = { confidence: 'low', rationale }; };
+    const fallbackTextScore = (text, positiveTerms, negativeTerms) => {
+      if (!text || text.trim().length < 20) return 50;
+      const positive = positiveTerms.filter(term => text.includes(term)).length;
+      const negative = negativeTerms.filter(term => text.includes(term)).length;
+      return Math.max(22, Math.min(85, 50 + Math.max(-4, Math.min(4, positive - negative)) * 7));
+    };
+    const financialMetricNumber = (value, key) => {
+      let raw = value, unit = '';
+      for (let depth = 0; depth < 5 && raw && typeof raw === 'object' && !Array.isArray(raw); depth++) {
+        unit = String(raw.unit || raw.units || raw.format || unit).toLowerCase();
+        const next = ['value','amount','estimate','percentage','percent','display','formatted','text'].find(k => raw[k] !== undefined && raw[k] !== null && raw[k] !== '');
+        if (!next) return null;
+        raw = raw[next];
+      }
+      if (raw === null || raw === undefined || raw === '' || typeof raw === 'boolean') return null;
+      const text = String(raw).replace(/,/g, '').trim();
+      const match = text.match(/-?\d+(?:\.\d+)?/);
+      if (!match) return null;
+      let n = Number(match[0]);
+      const isPercent = text.includes('%') || unit.includes('percent') || unit === '%';
+      if (key === 'revenue_growth' || key === 'ebitda_margin') { if (isPercent || Math.abs(n) > 1) n /= 100; }
+      else if (key === 'customer_concentration' && n >= 0 && n <= 1 && !isPercent) n *= 100;
+      return n;
+    };
+    const targetDistinct = list(qlooSignals.target_distinctive || cul.target_distinctive).filter(item => item && (item.name || item.title));
+    const sharedSignals = list(qlooSignals.shared_affinities || cul.shared).filter(item => item && (item.name || item.title));
+    const seenAudienceSignals = new Set();
+    [...targetDistinct, ...sharedSignals].forEach(item => seenAudienceSignals.add(`${String(item.category || '').toLowerCase()}::${String(item.name || item.title).toLowerCase()}`));
+    if (scoreNumber(ov.strategic_fit) === null && hasCompletedReport) {
+      const text = textForScoring([biz.strategic_rationale, ...findings, ...ops, ...risks, a.report?.executive_summary, a.report?.deal_fit]);
+      ov.strategic_fit = fallbackTextScore(text, ['complementary','adjacent','cross-sell','expand','synergy','capability','market access','distribution','aligned'], ['mismatch','misaligned','cannibalization','conflict','duplicative','incompatible','competes directly']);
+      markFallback('strategic_fit', 'Directional score inferred from the saved report because it did not contain a normalized component score. Low confidence; validate with diligence.');
+    }
+    if (scoreNumber(ov.audience_expansion) === null && hasCompletedReport) {
+      if (seenAudienceSignals.size && (targetDistinct.length || list(qlooSignals.target_profile?.top_affinities).length)) ov.audience_expansion = Math.round((targetDistinct.length / Math.max(1, seenAudienceSignals.size)) * 100);
+      else ov.audience_expansion = fallbackTextScore(textForScoring([cul.profile_summary, cul.audience_expansion_opportunities, cul.audience_signals, ...findings, ...ops]), ['new audience','audience expansion','distinctive','unserved segment','reach new','adjacent audience','audience opportunity'], ['same audience','limited expansion','little expansion','high overlap','no new audience']);
+      markFallback('audience_expansion', 'Directional score based on cultural-affinity differences when available, otherwise on audience-expansion language in the saved report. Low confidence; not a revenue forecast.');
+    }
+    if (scoreNumber(ov.financial_fit) === null && hasCompletedReport) {
+      const metricInputs = [['revenue_growth',fin.revenue_growth,0.4],['ebitda_margin',fin.ebitda_margin,0.4],['net_debt_to_ebitda',fin.net_debt_to_ebitda,0.15],['customer_concentration',fin.customer_concentration,0.05]].map(([key,value,weight]) => [key,financialMetricNumber(value,key),weight]).filter(([,value]) => value !== null);
+      if (metricInputs.length) {
+        const pieces = metricInputs.map(([key,n,weight]) => {
+          if (key === 'revenue_growth') return {weight, score: Math.max(0,Math.min(100,((n + 0.2)/0.5)*100))};
+          if (key === 'ebitda_margin') return {weight, score: Math.max(0,Math.min(100,(n/0.30)*100))};
+          if (key === 'net_debt_to_ebitda') return {weight, score: Math.max(0,Math.min(100,(1-n/6)*100))};
+          return {weight, score: Math.max(0,Math.min(100,100-n))};
+        });
+        ov.financial_fit = Math.round(pieces.reduce((sum,item)=>sum+item.score*item.weight,0)/pieces.reduce((sum,item)=>sum+item.weight,0));
+        markFallback('financial_fit', 'Calculated from the financial metrics available in the saved report. Missing metrics were excluded rather than treated as zero.');
+      } else {
+        ov.financial_fit = fallbackTextScore(textForScoring([fin.assessment, ...findings, ...risks, a.report?.executive_summary]), ['revenue growth','growing revenue','profitability','positive ebitda','strong margins','cash generation','low leverage','recurring revenue','improving margins'], ['declining revenue','loss-making','negative cash flow','high leverage','liquidity pressure','margin pressure','debt burden','financial distress']);
+        markFallback('financial_fit', 'Directional score inferred from the saved financial discussion because no complete normalized score or usable metrics were available. Low confidence; lack of disclosure is not proof of poor performance.');
+      }
+    }
+    if (scoreNumber(ov.integration_fit) === null && hasCompletedReport) {
+      if (ov.integration_risk !== undefined && ov.integration_risk !== null) {
+        const risk = compactRisk(ov.integration_risk);
+        ov.integration_fit = risk === 'Low' ? 85 : (risk === 'Moderate' || risk === 'Medium' ? 60 : (risk === 'High' ? 35 : (risk === 'Critical' ? 15 : null)));
+      }
+      if (scoreNumber(ov.integration_fit) === null) ov.integration_fit = fallbackTextScore(textForScoring([cul.cultural_integration_risks, biz, ...risks, ...findings, a.report?.executive_summary]), ['compatible','aligned operating model','shared values','complementary capabilities','compatible systems','clear integration path','common culture'], ['cultural gap','integration risk','system incompatibility','retention risk','operational complexity','regulatory complexity','misaligned','integration challenge']);
+      markFallback('integration_fit', 'Directional score inferred from cultural, operational and integration observations in the saved report. Low confidence unless supported by explicit integration evidence.');
+    }
     const reportSummary = (a.report && (a.report.executive_summary || a.report.summary)) || a.agent_output || 'Research is underway. Findings will appear here when available.';
     const culturalTakeawaySummary = a.report?.cultural_takeaway || a.report?.cultural_implications || cul.profile_summary || 'Cultural evidence should inform brand positioning, audience opportunity and integration planning. No company-specific cultural conclusion should be drawn where evidence is missing.';
     const asArray = value => Array.isArray(value) ? value : (value ? [value] : []);
@@ -180,7 +271,7 @@
     else { alertBox.hidden = true; }
     root.innerHTML = `
       <section class="tabs analysis-tabs" aria-label="Analysis sections"><a class="active" href="#overview">Overview</a><a href="#financial">Financial Intelligence</a><a href="#business">Business Intelligence</a><a href="#cultural">Cultural Intelligence</a><a href="#risks">Risks &amp; synergies</a><a href="#report">Acquisition Insight</a></section>
-      <section id="overview" class="metric-grid">${metric('Strategic fit',ov.strategic_fit,'Products, markets and capabilities')}${metric('Cultural categories', (() => { const categories = [...list(qlooSignals.acquirer_profile?.categories), ...list(qlooSignals.target_profile?.categories)]; const names = [...new Set(categories.filter(x => list(x.results).length).map(x => x.label || x.entity_type).filter(Boolean))]; return names.length ? `${names.length} categories` : 'Not available'; })(),'Brands, media and places')}${metric('Audience expansion',ov.audience_expansion,'Potential new audiences')}${metric('Financial fit',ov.financial_fit,'Reported financial indicators')}${metric('Integration fit',integrationFitValue(ov),'People, brand and systems')}</section>
+      <section id="overview" class="metric-grid">${metric('Strategic fit',ov.strategic_fit,'Products, markets and capabilities',scoreDetails.strategic_fit)}${metric('Cultural categories', (() => { const categories = [...list(qlooSignals.acquirer_profile?.categories), ...list(qlooSignals.target_profile?.categories)]; const names = [...new Set(categories.filter(x => list(x.results).length).map(x => x.label || x.entity_type).filter(Boolean))]; return names.length ? `${names.length} categories` : 'Not available'; })(),'Brands, media and places')}${metric('Audience expansion',ov.audience_expansion,'Potential new audiences',scoreDetails.audience_expansion)}${metric('Financial fit',ov.financial_fit,'Reported financial indicators',scoreDetails.financial_fit)}${metric('Integration fit',integrationFitValue(ov),'People, brand and systems',scoreDetails.integration_fit)}</section>
       <section class="content-grid"><div class="panel span-2"><div class="panel-head"><h2>Executive findings</h2></div>${findings.length ? findings.map(finding).join('') : '<p class="muted">No supported findings were returned yet. Arc researches both companies from public sources whether or not documents are uploaded.</p>'}</div>
       <div class="panel"><div class="panel-head"><h2>Deal materials</h2><span class="muted">${docs.length} files</span></div>${items(docs.map(d=>d.filename),'No materials uploaded.')}<div class="panel-head" style="margin-top:24px"><h2>Methodology</h2></div><p class="muted">Arc combines financial evidence, business research, cultural analysis, deterministic scoring, and AI-assisted synthesis. Findings remain tied to available evidence, with unresolved questions surfaced for human diligence.</p></div></section>
       <section id="financial" class="content-grid"><div class="panel span-2"><div class="panel-head"><h2>Financial Intelligence</h2></div>${Object.keys(fin).length ? `<div class="score-row">${[['Revenue growth','revenue_growth'],['EBITDA margin','ebitda_margin'],['Net debt / EBITDA','net_debt_to_ebitda'],['Customer concentration','customer_concentration']].map(([l,k])=>`<div><span>${l}</span><strong>${esc(financialMetric(fin[k], k))}</strong></div>`).join('')}</div>${fin.assessment ? `<p class="muted">${esc(financialText(fin.assessment))}</p>` : ''}` : '<p class="muted">Financial evidence has not been analyzed yet.</p>'}</div></section>

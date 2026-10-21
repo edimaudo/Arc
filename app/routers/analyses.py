@@ -32,7 +32,6 @@ async def start_analysis(
     acquirer: str = Form(...),
     target: str = Form(...),
     objective: str = Form(...),
-    scopes: list[str] = Form(default=[]),
 ):
     acquirer, target, objective = acquirer.strip(), target.strip(), objective.strip()
     if not acquirer or not target:
@@ -40,7 +39,6 @@ async def start_analysis(
 
     analysis = create_analysis(
         acquirer, target, objective,
-        scopes or ['financial', 'business', 'cultural', 'integration'],
         owner_id=request.state.user['user_id'],
     )
     errors = []

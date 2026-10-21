@@ -13,8 +13,10 @@ import httpx
 
 from app.config import GEMINI_API_KEY, GEMINI_MODEL, GEMINI_TIMEOUT_SECONDS, GEMINI_THINKING_LEVEL, GEMINI_MAX_OUTPUT_TOKENS
 from app.qloo.client import QlooAPIError, QlooClient
+from app.services.scoring_service import score_financial_metrics
 
 ToolHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+FULL_ACQUISITION_SCOPES = ['financial', 'business', 'cultural', 'integration']
 
 
 class ArcAgent:
@@ -142,7 +144,7 @@ class ArcAgent:
             "acquirer": str(goal.get("acquirer") or "").strip().casefold(),
             "target": str(goal.get("target") or "").strip().casefold(),
             "objective": str(goal.get("objective") or "Full acquisition investigation").strip().casefold(),
-            "scopes": sorted(str(x).casefold() for x in (goal.get("scopes") or ["financial", "business", "cultural", "integration"])),
+            "scopes": FULL_ACQUISITION_SCOPES.copy(),
             "geography": str(goal.get("geography") or "").strip().casefold(),
             "documents": documents,
             "max_turns": max_turns,
@@ -225,20 +227,24 @@ class ArcAgent:
             "acquirer": str(goal.get("acquirer") or "").strip(),
             "target": str(goal.get("target") or "").strip(),
             "objective": goal.get("objective") or "Full acquisition investigation",
-            "scopes": goal.get("scopes") or ["financial", "business", "cultural", "integration"],
+            "scopes": FULL_ACQUISITION_SCOPES.copy(),
             "documents": documents,
         }
         prompt = (
             "You are Arc, an acquisition diligence analyst. Produce a useful first-pass report about both named companies in one response. "
+            "Always assess every area: financial performance, business and market position, strategic fit, cultural intelligence and audience expansion, and integration fit and risk. "
+            "The primary objective is a weighting lens for emphasis, not a filter; never omit an assessment area because the chosen objective emphasizes another area. "
             "Use current Google Search grounding for each company, its industry, competitive position and publicly disclosed financial evidence. "
             "Uploaded documents are optional. If none are present, research both companies anyway. If documents are present, use their extracted text and "
             "metrics as additional evidence, distinguish management-provided data from public facts, and flag conflicts or missing support. "
-            "Never invent facts, figures, URLs, quotations, sources or Qloo results. Keep unsupported numeric scores null and state evidence gaps. "
-            "Return valid JSON only with these keys: summary, findings, risks, opportunities, diligence_questions, scores, financial, business, cultural, qloo_evidence, report. "
+            "Never invent facts, figures, URLs, quotations, sources or Qloo results. Distinguish sourced evidence from inference and disclose evidence gaps. "
+            "Return valid JSON only with these keys: summary, findings, risks, opportunities, diligence_questions, scores, score_details, financial, business, cultural, qloo_evidence, report. "
             "Keep output compact to reduce wait time: summary and cultural_takeaway up to 2 sentences each, at most 5 findings, 4 risks, 3 opportunities, 5 diligence questions and 8 sources. Each finding body should be at most 45 words. "
             "findings must be a list of objects with type, title, body and evidence; risks and opportunities must be concise lists of objects with title, body and evidence where available; "
-            "diligence_questions must be a list of practical questions. scores may contain strategic_fit, cultural_fit, audience_expansion, financial_fit and integration_risk, "
-            "but use null or 'Not assessed' wherever public evidence is insufficient. financial must contain revenue_growth, ebitda_margin, net_debt_to_ebitda, customer_concentration and assessment, "
+            "diligence_questions must be a list of practical questions. scores must contain numeric 0-100 values for strategic_fit, cultural_fit, audience_expansion, financial_fit and integration_fit whenever a substantive report is generated. Higher integration_fit means easier/more compatible integration; integration_risk may be a separate Low/Moderate/High/Critical label. "
+            "Do not return a score object in place of a numeric score. Put rationale, confidence (high/medium/low), and evidence_basis in score_details under each dimension. Scores are directional ratings, not probabilities of deal success. "
+            "When a dimension is discussed in the report but data is incomplete, use a neutral score of 50 with low confidence and explain the specific evidence gap rather than returning null or 'Not assessed'. Do not treat missing financial values as zero or as evidence of poor performance. Use null only when the report contains no evidence or discussion for that dimension at all. "
+            "financial must contain revenue_growth, ebitda_margin, net_debt_to_ebitda, customer_concentration and assessment, "
             "using only sourced or uploaded values. business must contain model, market, strategic_rationale and open_questions. cultural must be a substantive section, not a placeholder, containing profile_summary, acquirer_profile, target_profile, audience_signals, brand_positioning, shared_cultural_territory, differentiated_cultural_territory, audience_expansion_opportunities, cultural_integration_risks, practical_implications and source_evidence. Each signal should explain what was observed, why it matters commercially, and the evidence limitation. "
             "but do not attribute anything to a named provider; the application will attach matched cultural evidence separately. report must contain executive_summary, cultural_takeaway, deal_fit, key_risks, "
             "growth_opportunities, next_steps, sources and disclaimer. Make findings specific to these companies rather than generic diligence advice.\n\n"
@@ -925,29 +931,27 @@ class ArcAgent:
         return self._compact_qloo(raw, include_affinity=True)
 
     async def calculate_financial_fit(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Calculate fit from whatever verified financial metrics are available.
+
+        Missing fields are excluded and the remaining weights are renormalized; one
+        missing metric no longer prevents the report from receiving a usable score.
+        """
         metrics = args.get("metrics", {}) or {}
-        required = ["revenue_growth", "ebitda_margin"]
-        missing = [k for k in required if metrics.get(k) is None]
-        if missing:
+        score, detail = score_financial_metrics(metrics)
+        all_metrics = ("revenue_growth", "ebitda_margin", "net_debt_to_ebitda", "customer_concentration")
+        available = list((detail.get("components") or {}).keys())
+        missing = [key for key in all_metrics if key not in available]
+        if score is None:
             return {"financial_fit": None, "components": {}, "status": "insufficient_evidence", "missing": missing}
-        revenue_growth = max(0.0, min(1.0, float(metrics["revenue_growth"]) / 0.30))
-        margin = max(0.0, min(1.0, float(metrics["ebitda_margin"]) / 0.30))
-        leverage = None if metrics.get("net_debt_to_ebitda") is None else max(0.0, min(1.0, 1.0 - float(metrics["net_debt_to_ebitda"]) / 6.0))
-        concentration = None if metrics.get("customer_concentration") is None else max(0.0, min(1.0, 1.0 - float(metrics["customer_concentration"]) / 100.0))
-        components = {"growth": round(revenue_growth * 100), "margin": round(margin * 100)}
-        if leverage is not None:
-            components["leverage"] = round(leverage * 100)
-        if concentration is not None:
-            components["concentration"] = round(concentration * 100)
-        weights = {"growth": 0.40, "margin": 0.40, "leverage": 0.15, "concentration": 0.05}
-        terms = [(components["growth"], weights["growth"]), (components["margin"], weights["margin"])]
-        if leverage is not None:
-            terms.append((components["leverage"], weights["leverage"]))
-        if concentration is not None:
-            terms.append((components["concentration"], weights["concentration"]))
-        weight_total = sum(w for _, w in terms)
-        score = round(sum(v * w for v, w in terms) / weight_total) if weight_total else None
-        return {"financial_fit": score, "components": components, "status": "complete", "weights_used": weights}
+        return {
+            "financial_fit": score,
+            "components": detail.get("components", {}),
+            "status": "complete" if len(available) >= 3 else "partial",
+            "missing": missing,
+            "coverage": detail.get("coverage"),
+            "confidence": detail.get("confidence"),
+            "rationale": detail.get("rationale"),
+        }
 
     async def score_acquisition_candidate(self, args: dict[str, Any]) -> dict[str, Any]:
         keys = ("strategic_fit", "cultural_fit", "audience_expansion", "financial_fit")
@@ -1227,6 +1231,7 @@ class ArcAgent:
             "opportunities": parsed.get("opportunities") or [],
             "diligence_questions": parsed.get("diligence_questions") or [],
             "scores": scores,
+            "score_details": parsed.get("score_details") or {},
             "financial": financial,
             "business": business,
             "cultural": cultural,
@@ -1245,7 +1250,7 @@ class ArcAgent:
             "Identify cultural proxies for broad brands and resolve those proxies through Qloo. If Qloo lacks a niche entity, explicitly record the gap and use public research as a fallback rather than inventing Qloo evidence. "
             "Never invent facts, financial figures, Qloo results, URLs, or sources. Distinguish evidence from inference. "
             "Return JSON only at completion with keys: summary, findings, risks, opportunities, diligence_questions, scores, financial, business, cultural, qloo_evidence, report. "
-            "scores must contain strategic_fit, cultural_fit, audience_expansion, financial_fit, integration_risk when supportable. Use null when evidence is insufficient. "
+            "scores must contain numeric 0-100 directional assessments for strategic_fit, cultural_fit, audience_expansion, financial_fit and integration_fit when a substantive report is produced. Put rationale, confidence and evidence_basis under score_details. If the report discusses a dimension but evidence is incomplete, use 50 with low confidence and describe the gap rather than null; never invent factual evidence. Keep integration_risk as a separate risk label when useful. "
             "findings, risks and opportunities should be concise structured objects with title, body and evidence where possible. "
             "The report should contain executive_summary, deal_fit, key_risks, growth_opportunities and next_steps. If documents are empty, research both companies, their industries, competitive positions and publicly disclosed financial evidence. If files are supplied, analyze their contents and metrics, reconcile them against public sources, and flag discrepancies. If an API/source is unavailable, state the gap and leave unsupported scores null rather than fabricate evidence."
         )

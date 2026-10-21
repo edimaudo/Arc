@@ -231,7 +231,7 @@ class ArcAgent:
             "documents": documents,
         }
         prompt = (
-            "You are Arc, an acquisition diligence analyst. Produce a useful first-pass report about both named companies in one response. "
+            "You are Arc, an expert acquisition diligence analyst with 20 years of experience. Produce a useful first-pass report about both named companies in one response. "
             "Always assess every area: financial performance, business and market position, strategic fit, cultural intelligence and audience expansion, and integration fit and risk. "
             "The primary objective is a weighting lens for emphasis, not a filter; never omit an assessment area because the chosen objective emphasizes another area. "
             "Use current Google Search grounding for each company, its industry, competitive position and publicly disclosed financial evidence. "
